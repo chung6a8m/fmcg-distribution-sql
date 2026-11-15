@@ -18,7 +18,7 @@ Lý do chọn: một chuyến đã bao trùm A reservation, B quota/grant, manif
 |---|---|---|
 | **APP-00** | Owner chọn các quyết định stack/tenancy ở mục 6; tạo solution và test harness tối thiểu | Build và test repeatable, DB migration tạo schema sạch; biết chính xác environment/build/source; không triển khai production |
 | **APP-01A** | Tenant/auth boundary tối thiểu cho **nonproduction**; Customer, SKU, location, Trip, A order/line, B quota/grant, source/command ledger | Cross-tenant read/write negative; Customer chịu AR, ShipTo snapshot; confirm A không tạo AR/COGS; same ID/cùng payload replay, khác payload conflict |
-| **APP-01B** | Manifest A/B + stock/right postings; T0→T1→T2 | A40/B30 không chồng; transfer A/B mỗi line riêng, đủ 2 legs; B31 rejected, không side effect; rights và stock không âm; snapshot/source trace |
+| **APP-01B** | Manifest A/B + stock/right postings; T0→T1→T2 | A40/B30 không chồng; transfer A/B mỗi line riêng, đủ 2 legs; thử B31 với offered cash465 để isolate quota, reject đúng `B_QUOTA_INSUFFICIENT` và không có effect/receipt; rights và stock không âm; snapshot/source trace |
 | **APP-01C** | B SaleDeliveryReceipt + A partial delivery; T3→T4 | B20, cash200, AR_B100, COGS200; A25, AR_A375, COGS250; mỗi transaction atomic, fault rollback; không dùng nhầm quota; reserved credit & grant conflict/race tham khảo AC-09 |
 | **APP-01D** | Offer/accept quỹ + unload A15/B10; T5→T6; read-only audit/reconcile | OFFER không ledger; cashier accept200 custody−200/fund+200, AR không giảm lần hai; unload A15 hold ở MAIN, B10 release; all 7×13 oracle PASS; trip chưa tự CLOSED sạch nếu còn A hold/case |
 | **APP-01E** | Integrated resilience/regression | Hai SQL/client sessions thực tranh BQuota/grant, replay concurrent, rollback sau partial effects, cross-module idempotency; evidence run ID/actual/diff; không nhận `AC-11 full` khi dependency/ACK chưa test |
@@ -69,13 +69,13 @@ Từ [business cases](../../business/reference-data/scenarios/business-cases.jso
 
 1. `T0` MAIN100/value1000, A hold40, B quota30, B grant100, không AR/COGS.
 2. `T1_LOAD` MAIN30/TRIP70; manifest A40/B30 per-source, transfer không ghi sale.
-3. `T2_REJECT` B31 thất bại **do quota**, các cột vẫn bằng T1, không ledger effect.
+3. `T2_REJECT` thử B SaleDeliveryReceipt intent **qty31 × price15 = P465**, **offered/verified cash465, Customer `C_B`, credit used0** (input fixture **synthetic-only** tương ứng [`sql/scenarios/ac03.sql`](../../sql/scenarios/ac03.sql), không phải receipt được nhận trước admission); do BQuota trên xe chỉ còn30 nên **phải** trả outcome `REJECTED_QUOTA`, reason `B_QUOTA_INSUFFICIENT` — không được reject vì thiếu grant, payment hay receipt. Có thể giữ command/rejection audit theo identity nhưng **không tạo SourceLine, Sale/Delivery, Receipt/Allocation hoặc bất kỳ stock/right/COGS/AR/grant/custody/fund effect nào**; mọi 12 số dư và các cột oracle của checkpoint vẫn bằng T1.
 4. `T3_B20` B20/P300/cash200 ⇒ AR_B100/custody200, COGS200; B grant còn0.
 5. `T4_A25` A25/P375/unpaid ⇒ AR_A375, COGS tổng450, A hold còn15.
 6. `T5_HANDOVER` cashier accept200 ⇒ custody0/fund200, AR không đổi.
 7. `T6_RETURN` trip0/main55, A hold15 ở MAIN, B quota0, AR_A375/AR_B100.
 
-**Assert đầy đủ 91/91 field/run**, không chỉ final checkpoint; thực thi fixture/reset sạch ít nhất hai lần với ID khác, expected load trực tiếp JSON. Negative matrix: wrong tenant/Customer/ShipTo, wrong A/B pool, overdeliver, duplicate same/changed payload, bank pending, OFFER only, maker/checker violation, fault after half effects, same-resource two-client race, wrong source/cost lineage. Ghi SQL/database/compatibility và API/UI build, test commit, TestRunId, expected/actual/diff, negative/fault/2-session trace và evidence link.
+**Assert đầy đủ 91/91 field/run**, không chỉ final checkpoint; thực thi fixture/reset sạch ít nhất hai lần với ID khác, expected load trực tiếp JSON. Negative matrix: **B31 assert đúng rejection reason `B_QUOTA_INSUFFICIENT` với offered cash465 (không chỉ so balances)**, wrong tenant/Customer/ShipTo, wrong A/B pool, overdeliver, duplicate same/changed payload, bank pending, OFFER only, maker/checker violation, fault after half effects, same-resource two-client race, wrong source/cost lineage. Ghi SQL/database/compatibility và API/UI build, test commit, TestRunId, expected/actual/diff, negative/fault/2-session trace và evidence link.
 
 **Definition of Done cấp APP-01 nonproduction:** schema tích hợp mới từ migration, các command/queries thực chạy, checkpoint pass, không có side effects khi reject/fault/replay, source trace và tenant/auth negative PASS, review CI trên HEAD. Không tự tuyên bố `AC-03 FULL E2E` nếu invoice/real role/external/accounting thiếu; không mở production B, offline hoặc go-live. Bất kỳ extension `AC-06` hay `AC-21` qua module tích hợp cần test riêng, không dựa vào PASS namespace thử.
 
