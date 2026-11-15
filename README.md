@@ -35,7 +35,7 @@ SQL-01 là **thiết kế logic MODEL_ONLY** đã merge; không phải verificat
 
 ## SQL-02 — AC-03 executable (PR triển khai)
 
-Xem [SQL runner, schema, test và hướng dẫn](sql/README.md). Script T-SQL + PowerShell dựng **scratch database có guard**, thực thi T0..T6, so runtime 7×13 giá trị với golden oracle và kiểm âm/replay/fault. Đã **CI_SQL_VERIFIED** qua **2 lần chạy** trên Windows/SQL Server 2019 LocalDB (compatibility 150), mỗi lần 7/7 checkpoint và 91/91 cột PASS; guard sai target được xác nhận từ chối. [Evidence và TestRunIds](docs/evidence/2026-11-15-sql02-ac03-ci.md) — [CI run](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43702421402). SQL Server 2017/compat140 và máy local của người dùng chưa kiểm trực tiếp.
+Xem [SQL runner, schema, test và hướng dẫn](sql/README.md). Script T-SQL + PowerShell dựng **scratch database có guard**, thực thi T0..T6, so runtime 7×13 giá trị với golden oracle và kiểm âm/replay/fault, kể cả corrupt per-source cost và wrong ISSUE/right provenance. Đã **CI_SQL_VERIFIED** qua **2 lần chạy** trên Windows/SQL Server 2019 LocalDB (compatibility 150), mỗi lần 7/7 checkpoint và 91/91 cột PASS; guard sai target được xác nhận từ chối. [Evidence và TestRunIds](docs/evidence/2026-11-15-sql02-ac03-ci.md) — [CI run](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43705303178). SQL Server 2017/compat140 và máy local của người dùng chưa kiểm trực tiếp.
 
 ## Trạng thái
 
