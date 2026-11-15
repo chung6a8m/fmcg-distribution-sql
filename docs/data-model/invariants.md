@@ -10,13 +10,13 @@
 | I-02 | A Confirm tạo A hold nhưng **không** AR, revenue, COGS hay giảm hàng vật lý | BR-03 | Chỉ RIGHT_POSTING +40, snapshot A; test T0 không có Delivery/AR/COGS |
 | I-03 | Cho mọi SKU/location: onHandEligible ≥ tổng quyền A/B (cùng scope) ≥ 0; A/B placement không chồng | BR-04/06 | Entitlement IDs A hoặc B XOR; transaction khóa source location/buckets khi cấp quyền; right-position reconcile với physical qty; constraint non-negative trên projection |
 | I-04 | A hold = grantedA − deliveredA − releasedA; B quota = grantedB − soldB − releasedB; mỗi consumption chỉ từ **đúng pool** | BR-03/04/11 | RIGHT_POSTING nguồn + vị trí; atomic check-and-decrement dưới khóa; FK right từ delivery/manifest; test B31 reject |
-| I-05 | MAIN→TRIP và TRIP→MAIN không làm đổi **tổng stockQty/stockValue** của tập location, không tạo AR/COGS/receipt | BR-04/07 | Một STOCK_MOVEMENT và paired STOCK_POSTING legs trong cùng transaction; delta tổng bằng 0; test T1 và T6 |
+| I-05 | MAIN→TRIP và TRIP→MAIN không làm đổi **tổng stockQty/stockValue**; từng manifest/unload line có movement riêng, đúng SKU/pool/source/qty/value và 2 legs cân nhau, không AR/COGS/receipt | BR-04/07 | T1 hai movement (A40/400, B30/300), T6 hai movement (A15/150, B10/100), mỗi movement 2 legs; **cùng command một transaction**; assert per-source + tổng |
 | I-06 | openingQty + inboundExternal − delivered = onHandAllLocations; không âm từng physical location. “soldQty” đếm DeliveryLine **thực giao**, không đếm load/retry | BR-03/04 | STOCK_POSTING và DELIVERY_LINE; check non-negative dưới lock; compare từng checkpoint |
 | I-07 | openingStockValue + inboundExternalValue − COGS = sum stockValue (trong AC-03 không có adjustment/return khách). Transfer không sinh COGS; delivery COGS dùng cost snapshot nguồn | BR-07 | COGS_EFFECT chỉ từ DELIVERY_LINE; moving-average theo SKU×location, lock qty/value cùng lúc; reconcile | 
-| I-08 | Tổng baseQty của từng A_ORDER_LINE đã giao ≤ confirmedBaseQty; A held không dùng để bán B, kể cả sau unload | BR-03/04 | Lock A order line + reservation; source FK / remaining; kiểm tổng + concurrency |
+| I-08 | Tổng baseQty A_ORDER_LINE đã giao ≤ confirmedBaseQty; A held không dùng để bán B; DELIVERY/LINE Customer phải khớp Customer chịu nợ trên A_ORDER/B_SALE nguồn | BR-02/03/04 | Lock line+reservation; FK source cùng tenant/Customer (composite key hoặc validated immutable linkage); negative wrong-customer delivery |
 | I-09 | B command **atomic**: delivery, B quota, stock/cost, AR, confirmed receipt/allocations, custody và grant cùng commit/cùng rollback | BR-11/12/13 | Một transaction; idempotency envelope; fault-injection trong SQL-02/03A |
 | I-10 | Với B: P ≥ 0, R ≥ 0, C ≥ 0, R+C ≤ P; creditExposure = P−R−C ≥ 0; grantRemaining = granted−consumed−released ≥ 0 | BR-12 | Decimal exact; confirmed receipt mới là R; CustomerCredit phải reserved; lock grant và credit; không suy UNSET=APPROVED |
-| I-11 | AR theo open item = grossDue − phân bổ confirmed hợp lệ − các adjustment được duyệt ≥ 0. A Confirm/load/handover không tạo/trừ AR | BR-03/13/14 | FK allocations tới receipt confirmed và item; transaction lock item/credit; phép cân tại T3–T5 |
+| I-11 | AR theo open item = grossDue − phân bổ confirmed hợp lệ − adjustments được duyệt ≥ 0; `RECEIPT_ALLOCATION` bắt buộc cùng Customer giữa RECEIPT và AR_OPEN_ITEM, CustomerCredit cũng không được dùng xuyên Customer. A Confirm/load/handover không tạo/trừ AR | BR-02/03/13/14 | Same-tenant **và same-customer** FK/composite reference; lock item/credit và xác minh receipt; negative Customer X receipt → Customer Y AR |
 | I-12 | Receipt cash được **verified thực** mới tạo custody; bank pending/ảnh chuyển tiền không là receipt confirmed hay cash | BR-12/13 | Receipt verification state + source; check pending không được allocate; cash-only effect vào custody |
 | I-13 | OFFERED không đổi ledger. CashierAccepted(x) ⇒ custody−x, fund+x cùng transaction, **không trừ AR lần hai**; cashier độc lập người giao khi policy yêu cầu | BR-13/14 | Handover state + acceptance source, maker/checker authorization; paired ledger effects; test T5 |
 | I-14 | Cùng tenant/producer/commandId + canonical payload giống: **một hiệu ứng**; identity cũ/payload khác: CONFLICT; các ledger effect có source line duy nhất theo vai/leg | BR-16 | Unique command key/hash; unique effect ID/role/ordinal; replay result, không re-post |
@@ -30,7 +30,8 @@
 - **Không âm tại commit:** physical qty/value trong trường hợp AC-03; quyền theo từng location và grant/AR/custody; không cho hai command cạnh tranh cùng vượt quyền.
 - **Right placement phải có hàng vật lý hợp lệ tại nơi đó:** ΣA_rightPlacement + ΣB_rightPlacement ≤ onHandEligible(location, SKU) (nếu cần lot, mở rộng cùng scope). Không trừ các right lại lần hai khi đã chuyển lên xe.
 - **Giá trị balance phải đối chiếu nguồn:** trong slice, positive stock value ở mỗi location với unit cost10; trong thực tế có rounding/residual cần policy riêng, không mặc định stock value phải luôn tỷ lệ cố định.
-- **Một lần giao có nguồn:** DeliveryLine / SourceLine không được ghi trùng. Trong A, partial delivery có thể nhiều lần nhưng cùng một line giao không lặp effect; B một SaleDeliveryReceipt chốt source event duy nhất.
+- **Một lần giao có nguồn:** DeliveryLine / SourceLine không được ghi trùng. `sourceLineId` là identity riêng trong tenant, không phải `lineOrdinal` dùng lại theo command; hai event có thể đều có ordinal=1 nhưng sourceLineId khác nhau. Trong A, partial delivery có thể nhiều lần nhưng cùng một line giao không lặp effect; B một SaleDeliveryReceipt chốt source event duy nhất.
+- **Khóa đúng Customer:** Delivery/AR cùng Customer chịu nợ với A_ORDER hoặc B_SALE nguồn; RECEIPT/AR_OPEN_ITEM cùng Customer khi allocate; CustomerCredit apply cùng Customer; không coi FK tenant là đủ.
 - **Approval không thể là DB CHECK:** seller mode admission, quyền writer theo Trip, cashier accept, terms và chính sách credit cần kiểm trước khi post, audit và chứng cứ phù hợp; physical prototype không chứng minh security trên toàn ứng dụng.
 
 ## 2. Khóa logic, unique và cardinality dự kiến
@@ -47,15 +48,16 @@
 | AReservation | (tenantId, reservationId), unique sourceLine của lần grant | Một order line có thể nhiều reservation (không unique orderLine+trip toàn cục); heldQty derived |
 | BQuota | (tenantId, quotaId), unique sourceLine của lần grant | Không unique cứng (tripId,skuId) nếu có nhiều nguồn grant; quyền active tách entitlement |
 | BGrant | (tenantId, grantId), unique sourceLine cấp grant | Scope hợp lệ trên grant; không giả định grant chỉ per Customer |
-| ManifestLine | (tenantId, manifestLineId), unique (tenantId, sourceLineId, effectRole) | XOR AReservation/BQuota; qty>0; each manifest source id stable |
-| Sale/Delivery/Line | (tenantId, saleId/deliveryId/lineId); unique source effect identity | XOR AOrderLine/BSaleLine trên DELIVERY_LINE; businessDate/ShipTo snapshot required |
-| BusinessEvent/SourceLine | (tenantId, producerId, commandId) unique + payloadHash; (tenantId, eventId, sourceLineId) | Same identity+hash replay; khác hash conflict; accepted/rejected khác với business effects |
-| StockMovement | (tenantId, movementId), unique (tenantId, sourceLineId, movementRole) | Một stock movement có source line/loại rõ; transfer có hai posting legs bù nhau, delivery issue gắn DeliveryLine |
+| ManifestLine | (tenantId, manifestLineId), unique (tenantId, sourceLineId) | XOR AReservation/BQuota; qty>0; mỗi line có một movement transfer 2 legs, cùng trip/SKU/right/pool và giá trị nguồn | 
+| TripUnloadLine | (tenantId, unloadLineId), unique (tenantId, sourceLineId) | FK cùng tenant đến originalManifestLine; pool/SKU/trip/right kế thừa từ manifest nguồn; qty không vượt phần còn thực giữ trên xe; mỗi line có movement 2 legs |
+| Sale/Delivery/Line | (tenantId, saleId/deliveryId/lineId); unique source effect identity | XOR AOrderLine/BSaleLine trên DELIVERY_LINE; businessDate/ShipTo snapshot required; DELIVERY/LINE Customer khớp Customer ở A_ORDER/B_SALE nguồn (composite FK hoặc command validation bất biến) |
+| BusinessEvent/SourceLine | BUSINESS_EVENT: UNIQUE(tenantId, producerId, commandId) + payloadHash; SOURCE_LINE: UNIQUE(tenantId, sourceLineId), FK (tenantId, eventId), UNIQUE(tenantId, eventId, lineOrdinal) | `sourceLineId` **duy nhất toàn tenant**, không tái dùng `lineOrdinal` làm ID; downstream FK/unique phải dùng cùng `(tenantId, sourceLineId)`; same command+hash replay, khác hash conflict |
+| StockMovement | (tenantId, movementId), unique (tenantId, sourceLineId, movementRole) | Load/unload một movement **cho mỗi** ManifestLine/TripUnloadLine; chính sourceLineId của line là FK tới nguồn; movement transfer có 2 legs bù nhau; issue gắn DeliveryLine |
 | Stock/right/cost/financial effects | (tenantId, sourceLineId, effectKind, ordinal) unique; mỗi effect có own stable ID | Cho phép nhiều leg có ordinal khác nhau trong **cùng** source; FK từ effect→source luôn cùng tenant |
 | StockCostBalance (projection) | (tenantId, skuId, locationId) | Với lot/quality về sau: eligibility theo lot/quality là chiều khác; cost vẫn theo SKU×location |
 | RightPosition (projection) | (tenantId, rightKind, rightId, locationId) | rightKind A/B XOR target; count per location không âm |
-| ReceivableOpenItem | (tenantId, openItemId), unique source delivery line + obligation role | Có Customer, dueDate nguồn; A/B theo DeliveryLine (không theo order/header) |
-| Receipt/Allocation | (tenantId, receiptId), (tenantId, allocationId), unique source effect | **Không unique receiptId+openItemId**: cho phép phân bổ nhiều lần có source khác |
+| ReceivableOpenItem | (tenantId, openItemId), unique source delivery line + obligation role; candidate UNIQUE(tenantId, customerId, openItemId) | Customer phải khớp Delivery và A_ORDER/B_SALE nguồn, dueDate nguồn; A/B theo DeliveryLine (không theo order/header) |
+| Receipt/Allocation | (tenantId, receiptId), (tenantId, allocationId), unique source effect; candidate UNIQUE(tenantId, customerId, receiptId) + UNIQUE(tenantId, customerId, openItemId) trên AR_OPEN_ITEM | RECEIPT_ALLOCATION chứa customerId và hai composite FKs `(tenantId,customerId,receiptId)`/`(tenantId,customerId,openItemId)`; không unique receiptId+openItemId để cho phép nhiều allocations có source khác; wrong customer bị chặn |
 | Handover/Acceptance | (tenantId, handoverId), (tenantId, acceptanceId), unique acceptance source effect | Cho phép accept từng phần khi có source/authorization, không post hai lần |
 
 Nếu SQL-02 chọn composite FK (tenantId, entityId), cần tránh FK chỉ dùng ID không tenant; đối với loại chứng từ có CustomerId và TripId phải kiểm cùng tenant ngay cả khi ID trùng text ở tenant khác. UNIQUE và CHECK không thay được serialization khi cùng trừ quota/grant/stock.
@@ -75,7 +77,7 @@ Nếu SQL-02 chọn composite FK (tenantId, entityId), cần tránh FK chỉ dù
 
 AC-03 dùng số nguyên trừu tượng (100 đơn vị @ cost1.000, price15), không áp một currency rounding rule VND. Scale nêu trên là **candidate capacity** cần stress/rounding tests trước physical decision. Định nghĩa rounding policy thật, currency treatment, lot/FEFO và source-cost adjustment sẽ được hoàn thiện ở các slice liên quan, không tự “chốt” từ oracle AC-03.
 
-**CHECK có thể enforce ngay:** factor/step dương, source qty/amount hợp lệ, trạng thái kind thuộc tập, XOR source FK, source/effect unique, physical/projection qty non-negative sau transaction. **Logic cần locking/test:** available sau khi trừ A/B, consumed ≤ granted, C/R confirmed, credit grant non-negative, AR allocation ≤ openItem remaining, maker/checker, atomic transfer/sale/accept.
+**CHECK/FK/UNIQUE candidate:** factor/step dương, source qty/amount hợp lệ, trạng thái kind, XOR source FK, sourceLineId unique tenant, source/effect unique, same-tenant/same-Customer composite FKs khi có thể; projection qty non-negative sau transaction. **Logic cần locking/test:** available sau khi trừ A/B, consumed ≤ granted, C/R confirmed, Customer/owner provenance qua A_ORDER/B_SALE, credit grant non-negative, AR allocation ≤ openItem remaining, per-manifest/unload-line qty/value/right reconcile, maker/checker, atomic transfer/sale/accept.
 
 ## 4. Negative/fault checklist đưa vào SQL-02
 
@@ -91,8 +93,11 @@ AC-03 dùng số nguyên trừu tượng (100 đơn vị @ cost1.000, price15), 
 | N-08 | Cross-tenant source FK hoặc location/trip lệch tenant | Reject trước ledger, không rò dữ liệu qua lookup và không create effect |
 | N-09 | Fault sau vài effects của B sale hoặc paired transfer | Rollback đủ effect đã thử ghi; không commit partial |
 | N-10 | T6 unload B10 nhưng cố giữ BQuota10 hoặc release A15 | Không được coi checkpoint T6 PASS; right positions không khớp oracle |
+| N-11 | Hai command khác nhau đều có `lineOrdinal=1` nhưng `sourceLineId` khác; sau đó retry command đầu | Cả hai sources/effects hợp lệ, không collision; retry không sinh thêm effect; cố tái sử dụng sourceLineId với event khác bị reject |
+| N-12 | Receipt Customer X (cùng tenant) allocate vào AR Customer Y; hoặc Delivery Customer khác Customer của A_ORDER/B_SALE | Reject trước ledger, không đổi AR/credit/custody, không tạo wrong-debtor record |
+| N-13 | T1/T6 có tổng qty/value đúng nhưng một line A/B sai qty/value/right ownership | Reject hoặc fail per-source reconciliation; không được lấy tổng movement 70/25 che sai lệch từng manifest/unload line |
 
-SQL-02 gate chính bắt buộc bao gồm N-01, N-03, N-04 và N-09 ở mức tối thiểu theo roadmap; N-08 cần thực thi khi schema support. **Kiểm thử hai session tranh quota/grant thật thuộc SQL-03A**, không gọi một test tuần tự là concurrency verified.
+SQL-02 gate chính bắt buộc gồm N-01, N-03, N-04, N-09 và **N-11..N-13** (identity, Customer, per-source provenance); N-08 cần thực thi khi schema support. **Kiểm thử hai session tranh quota/grant thật thuộc SQL-03A**, không gọi một test tuần tự là concurrency verified.
 
 ## 5. Tiêu chí review và giới hạn
 
