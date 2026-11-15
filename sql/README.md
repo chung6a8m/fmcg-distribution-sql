@@ -112,7 +112,7 @@ Số trong bảng chỉ minh họa hợp đồng đã freeze; **runner lấy exp
 
 ## SQL-03B — AC-21 thu, phân bổ, nộp quỹ; AC-20 tạm ứng độc lập
 
-**Trạng thái:** **CI_SQL_VERIFIED / PR #5 chờ review.** [SQL-03B Actions run 43718593857 — PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43718593857) trên executable/test commit `686ac03fe26794db6ce8788473b286324ce84e2f`, 2 scratch độc lập, AC-21 5×6 và AC-20 5×5, negative/rollback/replay và guarded DROP. [Evidence, TestRunIds và artifact](../docs/evidence/2026-11-15-sql03b-ac21-ac20.md). SQL Server 2019 LocalDB compatibility 150 đã chạy; 2017/compat140 NOT_RUN. Engine vẫn là prototype, chưa quyết định database production.
+**Trạng thái:** **MERGED / CI_SQL_VERIFIED** ở PR #5. [SQL-03B Actions run 43718593857 — PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43718593857) trên executable/test commit `686ac03fe26794db6ce8788473b286324ce84e2f`, 2 scratch độc lập, AC-21 5×6 và AC-20 5×5, negative/rollback/replay và guarded DROP. [Evidence, TestRunIds và artifact](../docs/evidence/2026-11-15-sql03b-ac21-ac20.md). SQL Server 2019 LocalDB compatibility 150 đã chạy; 2017/compat140 NOT_RUN. Engine vẫn là prototype, chưa quyết định database production.
 
 **Nguồn contract (read-only):** `../business/reference-data/scenarios/business-cases.json#AC-21`, `#AC-20`, `../business/reference-data/expected-results/golden-oracles.json#AC-21` (**5 bước × 6 trường**), `#AC-20` (**5 bước × 5 trường**), BR-13/14/16. Tiền thuộc `VND` trên hai ca này, không giống AC-03 synthetic unitleless. Runner **đọc JSON gốc mỗi run**, không hardcode các expected number.
 
@@ -133,3 +133,20 @@ Runner bắt buộc chạy AC-03 7×13 regression trước khi chạy SQL-03B; d
 - `include-ac21.ps1`: so **mọi cột** của AC-21 và AC-20 với golden JSON bằng decimal invariant culture; lưu expected/actual/differences và TestRunId ở evidence JSON.
 
 **Giới hạn:** Đây là hai synthetic fixtures, không phải xác minh role thủ quỹ thật, ngân hàng/verified-bank callback, refund đã thực chi, đa đơn hàng/đa collector production, concurrency hai SQL connections riêng của SQL-03B, báo cáo kế toán/hoá đơn, app E2E, EV-06, Owner Acceptance hay go-live. Tất cả source/commands chạy với quyền DB test; authorization và quorum của cashier cần app/security slice riêng. Không sửa `business/` hay `business.lock.json`.
+
+
+---
+
+## SQL-03C — AC-06 source-cost refund, cost snapshot và locked-period correction
+
+**Trạng thái triển khai:** IMPLEMENTED / SQL_CI_NOT_YET_VERIFIED tại thời điểm tạo PR SQL-03C. [Mô hình/evidence, gates](../docs/evidence/2026-11-15-sql03c-ac06.md). AC-06 là SQL executable specification, không đồng nghĩa EV-07, app E2E hoặc Go-Live.
+
+**Nguồn read-only:** `business/reference-data/scenarios/business-cases.json#AC-06`, `business/reference-data/expected-results/additional-oracles.json#AC-06` (BR-07/20). Runner nạp oracle gốc ở runtime, so **10 trường** gồm boolean khóa kỳ; không có expected copy trong T-SQL.
+
+~~~powershell
+.\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03C
+~~~
+
+Entrypoint vẫn bảo vệ scratch DB marker/nonce, chạy AC-03 regression rồi schema ac06, scenario và negative. Workflow `.github/workflows/sql-ac06.yml` chạy 2 scratch riêng và upload actual/expected, 3 checkpoints, negative state và guard vào JSON evidence.
+
+SQL-03C dùng `StockPosting` append-only và average theo SKU × location; snapshot cost khi ISSUE, cumulative RETURN theo source version, revalue forward + adjustment trước đó sau LOCKED P1. Giá trị tại QUARANTINE là cost reversal, không phải cash refund, AR/credit, QA release hay VAT. Các test chặn ghi vào kỳ khóa, DML sửa/xóa lịch sử, over-return, wrong tenant/source/SKU, idempotency conflict và lỗi giữa các effect. Có thử phiên bản điều chỉnh ngược bằng một command mới; không xóa lịch sử. **Giới hạn:** integer base units / VND whole units synthetic, không fractional UoM, kế toán bình quân kỳ, real refund disbursement, concurrency đa session của AC-06, engine SQL Server 2017 compat140, app/Owner gate.
