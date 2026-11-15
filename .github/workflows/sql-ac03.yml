@@ -1,0 +1,39 @@
+name: SQL-02 AC-03 SQL Server scratch verification
+
+on:
+  pull_request:
+    paths:
+      - 'sql/**'
+      - '.github/workflows/sql-ac03.yml'
+      - 'business/reference-data/expected-results/golden-oracles.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ac03-scratch:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start SQL Server Express LocalDB
+        shell: pwsh
+        run: |
+          Get-Command sqlcmd -ErrorAction Stop | Format-List
+          & sqllocaldb info
+          & sqllocaldb start MSSQLLocalDB
+          if ($LASTEXITCODE -ne 0) { throw "LocalDB startup failed" }
+      - name: Execute SQL-02 and compare original business oracle
+        shell: pwsh
+        run: |
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB'
+          if ($LASTEXITCODE -ne 0) { throw "SQL-02 AC-03 FAIL" }
+      - name: Upload SQL scratch test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ac03-sql02-evidence
+          path: sql/test-results/*.json
+          if-no-files-found: warn
+          retention-days: 7
