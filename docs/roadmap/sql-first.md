@@ -1,7 +1,7 @@
 # Roadmap SQL-first — Data Model → SQL Simulation → Application
 
 - **Ngày lập:** 2026-11-15
-- **Trạng thái:** ACTIVE — SQL-01/02/03A/03B đã MERGED; SQL-03C **CI_SQL_VERIFIED / PR_IN_REVIEW**, SQL-04 TODO. [SQL-02 evidence](../evidence/2026-11-15-sql02-ac03-ci.md).
+- **Trạng thái:** ACTIVE — SQL-01/02/03A/03B/03C **MERGED / CI_SQL_VERIFIED**; SQL-04 **HANDOFF_CANDIDATE / PR_IN_REVIEW**, Owner stack decisions PENDING. [SQL-02 evidence](../evidence/2026-11-15-sql02-ac03-ci.md).
 - **Repository thực hiện:** `chung6a8m/fmcg-distribution-sql`.
 - **Nguồn contract:** `business-v1.0.0` tại `business.lock.json` (source commit `88d70b3be72f34011b49b0de265ad2c43202492f`; tree `business/` = `c9a4164a99ea57e1d5f9bc8711285c6d3705f8e3`).
 - **Mục tiêu:** Có ERD đủ dùng, một mô phỏng SQL chạy được, và kiểm chứng một số bất biến khó nhất trước khi chọn backend/UI/ORM.
@@ -23,8 +23,8 @@
 | **SQL-02 — AC-03 SQL executable** | MERGED / CI_SQL_VERIFIED | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
 | **SQL-03A — B credit, atomicity** | MERGED / CI_SQL_VERIFIED | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
 | **SQL-03B — Thu, phân bổ, nộp quỹ** | MERGED / CI_SQL_VERIFIED | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
-| **SQL-03C — Giá vốn và hoàn** | CI_SQL_VERIFIED / PR_IN_REVIEW | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
-| **SQL-04 — Review và handoff cho app** | TODO | Đánh giá mô hình sau các SQL scenarios | Review constraints/concurrency, ghi gap và quyết định còn mở; xác định vertical slice app đầu tiên và tiêu chí kiểm thử; **sau đó mới chốt app stack** |
+| **SQL-03C — Giá vốn và hoàn** | MERGED / CI_SQL_VERIFIED | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
+| **SQL-04 — Review và handoff cho app** | HANDOFF_CANDIDATE / PR_IN_REVIEW | Đánh giá mô hình sau các SQL scenarios | Review constraints/concurrency, ghi gap và quyết định còn mở; xác định vertical slice app đầu tiên và tiêu chí kiểm thử; **sau đó mới chốt app stack** |
 
 **Đường găng:** SQL-01 → SQL-02 → SQL-03A/B/C → SQL-04. Các phần SQL-03 có thể tạo PR nhỏ độc lập sau khi SQL-02 được chấp nhận; không cần hoàn thiện toàn bộ 21 AC rồi mới bắt đầu app.
 
@@ -88,7 +88,7 @@
 - Không mutate kỳ khóa; source adjustments/reversal có định danh, không hoàn vượt lượng/giá trị nguồn; kiểm rounding residual.
 - Gate: đối chiếu `additional-oracles.json#AC-06` và test âm cho locked-period mutation/over-return.
 
-**SQL-03C triển khai trên nhánh PR:** `sql/schema/008_ac06.sql`, `009_ac06_commands.sql`, `sql/scenarios/ac06.sql`, `sql/tests/ac06-negative.sql`, `sql/include-ac06.ps1` và workflow `sql-ac06.yml`. Dùng `sql/run-tests.ps1 -IncludeSql03C`, nạp JSON `additional-oracles.json#AC-06` trực tiếp khi so 10 trường, ghi 3 actual checkpoints, kiểm phép hoàn theo cost version, forward revalue, P1 LOCKED và rollback. [Runbook](../../sql/README.md), [initial evidence](../evidence/2026-11-15-sql03c-ac06.md). **CI_SQL_VERIFIED** trên executable/test SHA `1db0f2fd17e615004307152899f68122c7f4cd3d` — [run 43724179219 PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43724179219): 2 fresh scratch; mỗi run AC-06 10/10 fields, AC-03 regression 7×13, negative/fault, guarded DROP. [TestRunIds và artifact](../evidence/2026-11-15-sql03c-ac06.md). Chưa review/merge/EV-07.
+**SQL-03C đã merge (PR #6):** `sql/schema/008_ac06.sql`, `009_ac06_commands.sql`, `sql/scenarios/ac06.sql`, `sql/tests/ac06-negative.sql`, `sql/include-ac06.ps1` và workflow `sql-ac06.yml`. Dùng `sql/run-tests.ps1 -IncludeSql03C`, nạp JSON `additional-oracles.json#AC-06` trực tiếp khi so 10 trường, ghi 3 actual checkpoints, kiểm phép hoàn theo cost version, forward revalue, P1 LOCKED và rollback. [Runbook](../../sql/README.md), [initial evidence](../evidence/2026-11-15-sql03c-ac06.md). **CI_SQL_VERIFIED** trên **final executable/test SHA `73a6a5f40c45c0dd160186c88961720b1ac77aa9`** (đã fix exact cumulative rounding) — [run 43726916416 PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43726916416): 2 fresh scratch; mỗi run AC-06 10/10 fields + rounding regression, AC-03 7×13, negative/fault, guarded DROP. PR #6 được review và merge; [evidence/TestRunIds](../evidence/2026-11-15-sql03c-ac06.md) có lịch sử, [PR #6](https://github.com/chung6a8m/fmcg-distribution-sql/pull/6) mô tả final-head runs. Chưa có EV-07 hay app E2E.
 
 > **Phạm vi không đồng nhất:** SQL-03 chỉ kiểm các AC nêu trên. AC-02/08 (Customer/ShipTo/terms snapshot), AC-05/07/19 (lot/QA, quà, VAT/return) cần thêm slice khi app đầu tiên đụng tới; không tự tuyên bố tất cả BR hoặc MVP đã đạt.
 
@@ -96,13 +96,15 @@
 
 Khi SQL-03A/B/C hoàn tất, review một lần:
 
-- [ ] Logical ERD và physical schema tương thích với các test đã chạy; chỉ rõ entity tạm thời, debt/limitations, key/tenant/source/decimal/index/lock và cách reproduce.
-- [ ] Báo cáo **AC coverage**: SQL verified / model-only / not-run / external-blocked; không nâng `EV-01..15`, P0 gates hoặc Go-Live status dựa vào SQL simulation.
-- [ ] Xác định contract cho app: commands/queries, transaction boundary, audit/idempotency, persistence ownership; stored procedure nào là prototype, phần nào cần chuyển vào application service.
-- [ ] **Owner quyết định sau khi có evidence:** engine DB sản phẩm, database-per-tenant hay cách cô lập khác, backend/API/UI/ORM/hosting và app vertical slice đầu tiên. Quyết định lịch sử về database-per-tenant/PWA trong `business/constraints.md` không tự bị bãi bỏ.
-- [ ] Tạo handoff ngắn cho application repo nếu cần, không bắt buộc thêm repo/code app trong roadmap SQL này.
+- [x] Đối chiếu Logical ERD với **bốn physical namespaces thử nghiệm tách biệt**; ghi debt key/tenant/source/decimal/index/lock, concurrency và cách reproduce ở [SQL-04 review](../handoff/sql04-review.md).
+- [x] Báo cáo đủ **21 AC coverage**: SQL slice verified / SQL partial / no SQL run / external-blocked, không nâng `EV-01..15`, P0 gates hoặc Go-Live từ SQL simulation.
+- [x] Đề xuất contract app: commands/queries, transaction boundary, audit/idempotency, persistence ownership và trách nhiệm chuyển prototype sang service trong [app handoff](../handoff/sql04-app-handoff.md).
+- [x] Liệt kê **OWN-SQL04-01..06 — PENDING**: DB engine, tenancy (bảo lưu D-01 DB-per-tenant lịch sử), backend/API/UI/PWA/ORM/hosting và candidate APP-01. **Chưa tự chọn thay Owner.**
+- [x] Tạo handoff tự chứa với APP-00→APP-01E backlog và app test gates; không tạo repository/code ứng dụng ở SQL-04.
+- [ ] Independent PR review xác nhận dispositions SQL04-G01..08 và handoff.
+- [ ] Owner quyết định stack, tenancy, APP-01/authorization ở repo ứng dụng trước khi khởi tạo app thực.
 
-**Exit SQL-04:** SQL prototype kiểm chứng được những invariants ưu tiên, biết rõ giới hạn, có backlog app slice và các quyết định pending. Chưa có app/integration/go-live pass.
+**Exit tài liệu SQL-04:** handoff đã chuẩn bị cho review; có evidence SQL, gaps, backlog app và register các quyết định PENDING. **Chưa đóng Owner gates, chưa có app/integration/go-live pass**. SQL-04 hoàn tất sau PR review/merge; lựa chọn stack là bước Owner riêng.
 
 ## 7. Quy tắc PR, tracking và evidence
 
@@ -117,4 +119,4 @@ Khi SQL-03A/B/C hoàn tất, review một lần:
 
 Không xây app shell/API/UI/auth hay lựa chọn ORM; không xây hạ tầng cloud/CI phức tạp, ledger kế toán hoàn chỉnh, hóa đơn provider thật, offline sync production, tenant migration, cutover Kho-01 thật, PWA, chứng cứ pháp lý, pilot NPP-01. Các mục này thuộc lộ trình ứng dụng/verification riêng; các gate G-STOCK/G-CUT/G-IDEMP/G-LEDGER/G-INV vẫn chưa được miễn hoặc hoàn tất.
 
-**Bước hiện tại (15/11/2026):** SQL-01/02, SQL-03A [PR #4](https://github.com/chung6a8m/fmcg-distribution-sql/pull/4), SQL-03B [PR #5](https://github.com/chung6a8m/fmcg-distribution-sql/pull/5) đã merge. SQL-03C [PR #6](https://github.com/chung6a8m/fmcg-distribution-sql/pull/6) đã có CI_SQL_VERIFIED trên executable source, chờ independent review rồi mới merge và sang SQL-04. SQL Server 2017/compat140 và app E2E chưa được chứng minh; chưa chốt app stack.
+**Bước hiện tại (15/11/2026):** SQL-01/02/03A/03B/03C đều đã merge (SQL-03C [PR #6](https://github.com/chung6a8m/fmcg-distribution-sql/pull/6), final SQL CI PASS). SQL-04 đang mở PR handoff: [review/21 AC coverage](../handoff/sql04-review.md) và [APP-01 candidate, contracts, Owner decision register](../handoff/sql04-app-handoff.md). Chờ independent PR review và các quyết định Owner sau đó. SQL Server 2017/compat140 và app E2E chưa được chứng minh; chưa chọn stack.
