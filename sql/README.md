@@ -78,7 +78,7 @@ Bộ negative cases có lỗi mong đợi/rollback và kiểm không còn side e
 
 ## SQL-03A — AC-09 B credit, atomic transaction và two-session races
 
-**Trạng thái PR #4:** remediation 3 review findings đang được kiểm CI trên HEAD mới; kết quả [CI run 43707951464](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43707951464) chỉ thuộc **HEAD cũ** `3e9b0d3dfb182fed44fc64a25b77b7162aa4884e`, không được dùng làm bằng chứng cho code đã sửa. Xem [evidence cập nhật](../docs/evidence/2026-11-15-sql03a-ac09.md). SQL-03A chỉ là executable specification; không tự chứng minh AC-11 đầy đủ, app E2E, kế toán/hóa đơn, local SQL Server 2017 compat140 hay Go-Live.
+**Trạng thái PR #4:** **CI_SQL_VERIFIED / IN_REVIEW** cho executable code SHA `dc41d0ea86d0c22c5c6615b9d53adbf6fe02b2da` sau khi fix 3 findings; hai fresh-scratch run đều PASS ở [SQL-03A CI run 43713135690](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43713135690) cùng với SQL-02 run `43713135688` và business run `43713135684`. Xem [evidence/TestRunIds/witness lock trace](../docs/evidence/2026-11-15-sql03a-ac09.md). Khi chỉ có commit docs sau executable SHA này, phải đối chiếu HEAD/CI PR mới nhất trước merge. SQL-03A chỉ là executable specification; không tự chứng minh AC-11 đầy đủ, app E2E, kế toán/hóa đơn, local SQL Server 2017 compat140 hay Go-Live.
 
 **Nguồn bất biến:** `../business/reference-data/scenarios/business-cases.json#AC-09`, `../business/reference-data/expected-results/additional-oracles.json#AC-09`; BR-04/11/12/13/14/16; SOP-03. Không sửa business snapshot hoặc copy expected numeric vào test SQL.
 
