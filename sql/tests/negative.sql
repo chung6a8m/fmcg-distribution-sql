@@ -83,11 +83,15 @@ BEGIN CATCH
     IF @Err<>51206 THROW;
 END CATCH;
 
--- N-13b: preserve movement totals but relabel an A right leg as B.
+-- N-13b: swap A/B right ownership for BOTH original load lines. Each
+-- transfer still has balanced rights and global A/B totals are unchanged;
+-- only line-level pool provenance can catch the corruption.
 BEGIN TRY
     BEGIN TRANSACTION;
-    UPDATE ac03.RightPosting SET RightKind='B',RightId='QB01'
-    WHERE SourceLineId='LOAD1-A' AND EffectOrdinal=1;
+    UPDATE ac03.RightPosting
+    SET RightKind=CASE WHEN RightKind='A' THEN 'B' ELSE 'A' END,
+        RightId=CASE WHEN RightKind='A' THEN 'QB01' ELSE 'RA01' END
+    WHERE SourceLineId IN ('LOAD1-A','LOAD1-B');
     EXEC ac03.AssertInvariants;
     THROW 51410, 'N13_WRONG_POOL_PROVENANCE_PASSED', 1;
 END TRY
