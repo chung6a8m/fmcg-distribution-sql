@@ -150,8 +150,8 @@ CREATE TABLE ac03.ManifestLine (
     CONSTRAINT PK_Manifest PRIMARY KEY (TenantId, SourceLineId),
     CONSTRAINT UQ_Manifest_Link UNIQUE (TenantId, SourceLineId, TripId, SkuId, Pool, RightId),
     CONSTRAINT CK_Manifest_XOR CHECK (
-       (Pool='A' AND AReservationId=RightId AND BQuotaId IS NULL)
-       OR (Pool='B' AND BQuotaId=RightId AND AReservationId IS NULL)),
+       (Pool='A' AND AReservationId IS NOT NULL AND AReservationId=RightId AND BQuotaId IS NULL)
+       OR (Pool='B' AND BQuotaId IS NOT NULL AND BQuotaId=RightId AND AReservationId IS NULL)),
     CONSTRAINT FK_Manifest_Source FOREIGN KEY (TenantId, SourceLineId)
         REFERENCES ac03.SourceLine(TenantId, SourceLineId),
     CONSTRAINT FK_Manifest_A FOREIGN KEY (TenantId, AReservationId)
