@@ -1,6 +1,6 @@
 # FMCG Distribution — DMS SQL-first Prototype
 
-Repository độc lập để kiểm chứng **mô hình dữ liệu và nghiệp vụ DMS bằng SQL** trước khi chọn toàn bộ tech stack ứng dụng, theo hướng **Business-first dành cho solo developer**. Không phải fork, submodule hoặc subtree của repository nguồn.
+Repository độc lập lưu **SQL-first prototype, kiểm chứng và handoff nghiệp vụ DMS** theo hướng Business-first dành cho solo developer. SQL-04 đã review/merge; Owner đã chọn stack và cho phép APP-00/01 trong tài liệu SQL-05. **Repository này không phải application source và không triển khai production.** Không phải fork, submodule hoặc subtree của repository nguồn.
 
 ## Bắt đầu từ Business Baseline
 
@@ -22,7 +22,7 @@ Tree SHA phải bằng `businessTreeSha` trong `business.lock.json`. Workflow `.
 
 ## Roadmap SQL-first
 
-Xem **[Roadmap triển khai đang hoạt động](docs/roadmap/sql-first.md)**: SQL-01 Logical ERD → SQL-02 AC-03 runnable → SQL-03A/B/C kiểm thử quota/tiền/giá vốn → SQL-04 review & handoff. SQL Server 2017+ được đề xuất **chỉ làm engine thử nghiệm**, chưa phải quyết định DB production hoặc app stack.
+Xem **[Roadmap SQL-first đã hoàn tất handoff](docs/roadmap/sql-first.md)**: SQL-01 → SQL-02 → SQL-03A/B/C → SQL-04. Owner quyết định [SQL-05](docs/decisions/2026-11-15-owner-app-decisions.md) chọn **SQL Server production/app engine** (edition/version/ops chưa xác minh) và [APP-00/01 roadmap](docs/roadmap/app-00-app-01.md) được phê duyệt ở phạm vi **synthetic nonproduction**. SQL CI chỉ xác minh SQL Server 2019 LocalDB/compat150; không suy về production.
 
 ## SQL-01 — Logical ERD (đã merge, MODEL_ONLY)
 
@@ -45,9 +45,9 @@ Xem [SQL runner, schema, test và hướng dẫn](sql/README.md). Script T-SQL +
 
 Các ca SQL-03A/B/C dùng **schema namespace riêng để thử nghiệm**, chưa phải một physical model ứng dụng tích hợp. Hướng dẫn chạy và guard tại [sql/README.md](sql/README.md).
 
-## SQL-04 — Review và handoff (HANDOFF_CANDIDATE / chờ PR review)
+## SQL-04 — Review và handoff (PR #7 MERGED / REVIEW_R2_PASS)
 
 - [Review Logical ERD ↔ schema, constraints/concurrency, ma trận **21 AC** và gaps SQL04-G01..08](docs/handoff/sql04-review.md).
-- [Application handoff: candidate APP-01, commands/queries, test gates, persistence ownership, **OWN-SQL04-01..06 PENDING**](docs/handoff/sql04-app-handoff.md).
+- [Application handoff: APP-01 Mixed synthetic, commands/queries, test gates và persistence ownership](docs/handoff/sql04-app-handoff.md). Sáu quyết định Owner đã **APPROVED** trong [SQL-05 register](docs/decisions/2026-11-15-owner-app-decisions.md).
 
-**Trạng thái tổng:** Business Baseline v1.0 freeze và read-only; SQL-01 MODEL_ONLY, SQL-02/03A/B/C đã merge với bằng chứng **CI_SQL_VERIFIED chỉ trong phạm vi SQL** trên Windows SQL Server 2019 LocalDB/compat150. SQL-04 đang review tài liệu bàn giao; **chưa quyết định** database production, tenancy topology, backend, UI/PWA, ORM hoặc hosting. Không có application E2E, EV-01..15, P0 gate hoặc tenant Go-Live acceptance từ các SQL tests.
+**Trạng thái tổng:** Business Baseline v1.0 read-only; SQL-01 MODEL_ONLY, SQL-02/03A/B/C **CI_SQL_VERIFIED chỉ trong phạm vi SQL** trên Windows SQL Server 2019 LocalDB/compat150; SQL-04 [PR #7](https://github.com/chung6a8m/fmcg-distribution-sql/pull/7) REVIEW_R2_PASS/MERGED. **APP-00 AUTHORIZED / IMPLEMENTATION_NOT_STARTED**, APP-01A..E OWNER_AUTHORIZED; code thuộc repository ứng dụng độc lập, chưa có app E2E, EV-01..15, P0 hoặc Tenant Go-Live acceptance. Xem [roadmap APP](docs/roadmap/app-00-app-01.md).
