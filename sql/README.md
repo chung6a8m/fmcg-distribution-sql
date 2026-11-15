@@ -107,3 +107,29 @@ Số trong bảng chỉ minh họa hợp đồng đã freeze; **runner lấy exp
 **Negative cases:** available credit nhưng chưa reserve / sai CommandId / không đủ source / amount khác reservation đều bị reject; **tạo mới credit reservation sau khi sale cùng CommandId đã ACCEPTED bị reject `53218` không đổi sổ, `AssertPool` vẫn PASS; retry reservation hợp lệ đã tồn tại sau ACCEPTED trả `ALREADY_RESERVED`**; reserve cùng command+payload replay không duplicate; same ID/all-input payload replay không tăng effect; thay đổi receipt amount cùng ID conflict; fault sau stock/COGS rollback command + mọi effect; thiếu quota/grant/reserved CustomerCredit bị reject trước effect; overpay chưa cover đủ payable bị reject; bank pending không làm tăng custody; thử hai ca race độc lập. *Không* kiểm AC-11 phần dependency P→C trước/sau restart hoặc lost ACK durability end-to-end. Những phần này cần slice/evidence riêng.
 
 **File SQL-03A:** `schema/004_ac09.sql` (pool/ledger/view/invariants), `schema/005_ac09_commands.sql` (transaction, idempotency, race barrier), `tests/ac09-negative.sql`, `tests/ac09-races-setup.sql`, `tests/ac09-races-assert.sql`, `include-ac09.ps1` (load oracle, validation, sessions và evidence), workflow `.github/workflows/sql-ac09.yml`. [Evidence](../docs/evidence/2026-11-15-sql03a-ac09.md).
+
+---
+
+## SQL-03B — AC-21 thu, phân bổ, nộp quỹ; AC-20 tạm ứng độc lập
+
+**Trạng thái:** Đã triển khai trên nhánh PR, **SQL runtime CI_PENDING** cho commit đầu. Chỉ xác nhận PASS sau khi có GitHub Actions run trên đúng HEAD; xem [evidence AC-21/AC-20](../docs/evidence/2026-11-15-sql03b-ac21-ac20.md). Engine SQL Server 2017+ chỉ là prototype, không quyết định database production.
+
+**Nguồn contract (read-only):** `../business/reference-data/scenarios/business-cases.json#AC-21`, `#AC-20`, `../business/reference-data/expected-results/golden-oracles.json#AC-21` (**5 bước × 6 trường**), `#AC-20` (**5 bước × 5 trường**), BR-13/14/16. Tiền thuộc `VND` trên hai ca này, không giống AC-03 synthetic unitleless. Runner **đọc JSON gốc mỗi run**, không hardcode các expected number.
+
+Chạy từ root trên Windows SQL Server LocalDB/Express **riêng để thử nghiệm**, với PowerShell 5.1+, `sqlcmd`, Windows auth và quyền tạo/xóa scratch DB:
+
+```powershell
+.\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03B
+# Có thể kết hợp với SQL-03A trên cùng scratch, mỗi namespace độc lập:
+.\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03A -IncludeSql03B
+```
+
+Runner bắt buộc chạy AC-03 7×13 regression trước khi chạy SQL-03B; dùng **cùng scratch đã xác thực marker/nonce** rồi guarded DROP. `.github/workflows/sql-ac21.yml` gọi command hai lần, tạo hai DB khác nhau và upload `sql/test-results/*.json`. Exit code khác 0 nếu SQL, negative, oracle hoặc cleanup FAIL.
+
+- `schema/006_ac21.sql`: Scope theo tenant/customer, opening AR item, receipt có nguồn `CONFIRMED/PENDING`, allocation FK tới receipt confirmed và AR item đúng customer, custody posting, handover offer/accept và cashier fund posting; các sổ tạm ứng employee độc lập. `ReceiptCredit`, `CustomerBalances`, `AdvanceBalances` đều **derive từ ledger**, không persist số dư để hợp expected.
+- `schema/007_ac21_commands.sql`: `ac21.PostCommand` dùng SERIALIZABLE + UPDLOCK/HOLDLOCK trên `(TenantId,ScopeId)`, durable command hash theo payload; cùng ID/nội dung trả `REPLAY_ACCEPTED`, cùng ID/khác nội dung THROW 53301. `AssertScope` kiểm đối ứng source→posting và số dư không âm.
+- `scenarios/ac21.sql`: AC-21 confirm60.000, allocate20.000 +15.000, OFFER50.000 chưa đổi custody/quỹ, cashier ACCEPT50.000 mới custody−50.000/fund+50.000. Sau đó AC-20 issue500.000, approved expense300.000, offer200.000, accept100.000 hai lần; chứng minh tạm ứng không tự trộn AR/credit/custody/quỹ khách.
+- `tests/ac21-negative.sql`: receipt PENDING bị từ chối allocation, over-credit/over-AR/over-handover, cross-customer/tenant, FK confirmed-source; idempotent retry/conflict, rollback sau receipt/AR allocation và **giữa custody−/fund+**, quá hạn mức advance, fault rollback; kiểm bất biến và số dư sau mỗi nhánh.
+- `include-ac21.ps1`: so **mọi cột** của AC-21 và AC-20 với golden JSON bằng decimal invariant culture; lưu expected/actual/differences và TestRunId ở evidence JSON.
+
+**Giới hạn:** Đây là hai synthetic fixtures, không phải xác minh role thủ quỹ thật, ngân hàng/verified-bank callback, refund đã thực chi, đa đơn hàng/đa collector production, concurrency hai SQL connections riêng của SQL-03B, báo cáo kế toán/hoá đơn, app E2E, EV-06, Owner Acceptance hay go-live. Tất cả source/commands chạy với quyền DB test; authorization và quorum của cashier cần app/security slice riêng. Không sửa `business/` hay `business.lock.json`.
