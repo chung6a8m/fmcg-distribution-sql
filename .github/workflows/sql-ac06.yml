@@ -1,0 +1,39 @@
+name: SQL-03C AC-06 source cost and cumulative refund
+on:
+  pull_request:
+    paths:
+      - 'sql/**'
+      - '.github/workflows/sql-ac06.yml'
+      - 'business/reference-data/expected-results/additional-oracles.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ac06-scratch:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start SQL Server LocalDB
+        shell: pwsh
+        run: |
+          Get-Command sqlcmd -ErrorAction Stop | Out-Null
+          & sqllocaldb start MSSQLLocalDB
+          if ($LASTEXITCODE -ne 0) { throw 'SQL LocalDB start failed' }
+      - name: AC-03 regression and AC-06 golden, negative, rollback twice on isolated scratch databases
+        shell: pwsh
+        run: |
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03C
+          if ($LASTEXITCODE -ne 0) { throw 'SQL-03C run 1 failed' }
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03C
+          if ($LASTEXITCODE -ne 0) { throw 'SQL-03C run 2 failed' }
+      - name: Upload AC-06 source-cost, refunds, actual-oracle and guard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ac06-sql03c-evidence
+          path: sql/test-results/*.json
+          if-no-files-found: warn
+          retention-days: 7
