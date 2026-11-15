@@ -17,8 +17,8 @@ Repository này dành cho **phát triển sản phẩm**, sử dụng Business B
 
 ## Cách triển khai SQL-first
 
-- Roadmap hiện hành: `docs/roadmap/sql-first.md`. Ưu tiên **SQL-01 + SQL-02 / AC-03**, sau đó SQL-03A/B/C; không tự mở rộng toàn bộ ERD hoặc tạo app/API/UI/ORM.
-- Chỉ sử dụng SQL Server 2017+ làm **engine prototype tạm chọn**; chưa chốt DB production, chiến lược tenant isolation hoặc application stack. Không biến T-SQL prototype thành kiến trúc ứng dụng mặc định.
+- Roadmap SQL-first tại `docs/roadmap/sql-first.md` **đã hoàn tất review/handoff**; Owner đã phê duyệt `docs/decisions/2026-11-15-owner-app-decisions.md` và `docs/roadmap/app-00-app-01.md`. **Không tạo app/API/UI/ORM trong repository SQL**; ứng dụng phải sống trong repository độc lập đã xác minh.
+- SQL Server 2019 LocalDB compat150 chỉ là **engine đã được SQL CI kiểm chứng**, không phải production verification. Owner đã chọn **SQL Server + database-per-tenant, .NET 10/ASP.NET Core/Dapper/FluentMigrator, React PWA online-first, local-first CI** và APP-00/01 synthetic authorization. Không biến T-SQL scratch schemas thành app schema mặc định.
 - Golden oracles tại `business/reference-data/expected-results/` phải được test harness đọc/derive xác định từ nguồn; không sao chép expected thủ công rồi chỉnh để PASS.
 - Với SQL scenarios, thử cả **transaction rollback, negative tests, idempotency và đồng thời thực** khi được yêu cầu, kèm logs/actual/environment; test SQL không chứng minh app E2E hoặc tenant go-live.
 - Với mỗi vertical slice: chỉ ra BR/POL/SOP/AC, scenario/fixture, expected, negative cases và cách kiểm tra actual; phân biệt **MODEL_ONLY / NOT_RUN**, local verified, integrated verified và go-live accepted.

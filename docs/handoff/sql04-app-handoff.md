@@ -1,12 +1,12 @@
-# SQL-04 — Application handoff: contract, vertical slice và quyết định chờ Owner
+# SQL-04 — Application handoff: contract, vertical slice và Owner-approved transition
 
-- **Trạng thái:** `PROPOSED / OWNER_DECISION_PENDING`. Đầu ra thiết kế cho repo ứng dụng, **không** tự chọn stack hoặc mở B_ONLINE thật.
+- **Trạng thái:** `REVIEW_R2_PASS / OWNER_APP_AUTHORIZED` (PR #7 merged, Owner decisions 15/11/2026). Handoff thiết kế cho repo ứng dụng; **APP implementation NOT_STARTED**, không mở B_ONLINE thật. [Decision register](../decisions/2026-11-15-owner-app-decisions.md).
 - **Contract bất biến:** [Business Baseline v1.0](../../business/README.md), [domain model](../../business/domain-model.md), [BR](../../business/business-rules.md), [SOP Mixed](../../business/workflows/mixed.md), [AC-01..21](../../business/acceptance.md) và [SQL-04 review/coverage](sql04-review.md).
 - **Reference implementation:** [SQL scratch runner](../../sql/README.md), không phải migration/schema/API production. Không thêm fork/submodule hoặc runtime link về canonical repo.
 
 ## 1. Đề xuất vertical slice ứng dụng đầu tiên — APP-01
 
-**Đề xuất cho Owner:** tái dựng **AC-03 Mixed A+B_ONLINE trên dữ liệu SYNTHETIC_UNITLESS, `invoiceEligible=false`** thành **một luồng ứng dụng tích hợp trên môi trường nonproduction**. Đây là cách dùng ngay oracle 7 checkpoints × 13 field đã kiểm SQL để phát hiện lỗi nối module/UI/API/persistence sớm. **Không mô phỏng một hóa đơn thật hoặc gán nhãn B_ONLINE production-admitted.** Nếu cần đưa B thực vào pilot phải hoàn tất gate invoice/legal/accounting/security tương ứng trước đó.
+**Owner đã phê duyệt bằng OWN-SQL04-06 (15/11/2026):** tái dựng **AC-03 Mixed A+B_ONLINE trên dữ liệu SYNTHETIC_UNITLESS, `invoiceEligible=false`** thành **một luồng ứng dụng tích hợp trên môi trường nonproduction**. Đây là cách dùng ngay oracle 7 checkpoints × 13 field đã kiểm SQL để phát hiện lỗi nối module/UI/API/persistence sớm. **Không mô phỏng một hóa đơn thật hoặc gán nhãn B_ONLINE production-admitted.** Nếu cần đưa B thực vào pilot phải hoàn tất gate invoice/legal/accounting/security tương ứng trước đó.
 
 Lý do chọn: một chuyến đã bao trùm A reservation, B quota/grant, manifest load, delivery, AR, cash custody, cashier accept và unload; chính các phần này hiện mới **được kiểm thử trên nhiều schema SQL tách biệt**. APP-01 phải giải quyết khoảng trống tích hợp thay vì mở thêm module mới.
 
@@ -16,7 +16,7 @@ Lý do chọn: một chuyến đã bao trùm A reservation, B quota/grant, manif
 
 | ID | Increment | Dấu hiệu hoàn thành / test cần có |
 |---|---|---|
-| **APP-00** | Owner chọn các quyết định stack/tenancy ở mục 6; tạo solution và test harness tối thiểu | Build và test repeatable, DB migration tạo schema sạch; biết chính xác environment/build/source; không triển khai production |
+| **APP-00** | Dùng các quyết định stack/tenancy Owner đã chọn ở mục 6; tạo solution và test harness tối thiểu | Build và test repeatable, DB migration tạo schema sạch; biết chính xác environment/build/source; không triển khai production |
 | **APP-01A** | Tenant/auth boundary tối thiểu cho **nonproduction**; Customer, SKU, location, Trip, A order/line, B quota/grant, source/command ledger | Cross-tenant read/write negative; Customer chịu AR, ShipTo snapshot; confirm A không tạo AR/COGS; same ID/cùng payload replay, khác payload conflict |
 | **APP-01B** | Manifest A/B + stock/right postings; T0→T1→T2 | A40/B30 không chồng; transfer A/B mỗi line riêng, đủ 2 legs; thử B31 với offered cash465 để isolate quota, reject đúng `B_QUOTA_INSUFFICIENT` và không có effect/receipt; rights và stock không âm; snapshot/source trace |
 | **APP-01C** | B SaleDeliveryReceipt + A partial delivery; T3→T4 | B20, cash200, AR_B100, COGS200; A25, AR_A375, COGS250; mỗi transaction atomic, fault rollback; không dùng nhầm quota; reserved credit & grant conflict/race tham khảo AC-09 |
@@ -90,26 +90,28 @@ Từ [business cases](../../business/reference-data/scenarios/business-cases.jso
 
 `ac03.ExecuteSaleB`, `ac09.ExecuteSale`, `ac21.PostCommand`, `ac06.PostCommand` là **mẫu executable specification**. Không có quyết định phải dùng stored procedures, EF/Dapper/ORM, SQL Server production hay cách triển khai identity tại SQL-04.
 
-## 6. Decision register — tất cả PENDING
+## 6. Decision register — OWNER_APPROVED (15/11/2026)
 
-| ID | Quyết định cần Owner ghi rõ | Điều kiện/ảnh hưởng |
+Sáu lựa chọn được Owner phê duyệt trong phiên phỏng vấn, chi tiết ngày/lý do/phương án loại trừ/ranh giới trong [SQL-05 Owner Decision Register](../decisions/2026-11-15-owner-app-decisions.md).
+
+| ID | Quyết định đã chọn | Trạng thái |
 |---|---|---|
-| **OWN-SQL04-01** | Engine DB sản phẩm: SQL Server hay lựa chọn khác | Type precision, transaction semantics, migration, tooling, cost & deployment; SQL Server 2019 LocalDB mới là environment đã CI verified |
-| **OWN-SQL04-02** | Tenancy topology & isolation | `business/constraints.md` còn **D-01 database-per-tenant** là quyết định lịch sử; thay đổi phải có Owner supersession/version, không mặc định pooled DB |
-| **OWN-SQL04-03** | Backend/runtime/API & persistence/ORM | Một nguồn ghi có thẩm quyền; idempotency, transaction boundary và tooling test phải đáp ứng, không chọn vì SQL stored procs hiện tại |
-| **OWN-SQL04-04** | Frontend/mobile/PWA và offline posture | PWA là quyết định lịch sử được giữ; field UX và thiết bị, không bật Offline Write chỉ vì app sync được |
-| **OWN-SQL04-05** | Hosting/ops, audit, restore, secrets/retention | Chọn tối thiểu cho dev/test; trước real pilot phải kiểm security, backups/restore, access, provider, RPO/RTO |
-| **OWN-SQL04-06** | Chọn/điều chỉnh **APP-01** Mixed synthetic nonproduction | Phạm vi, test evidence, Owner authorization để bắt đầu app; lựa chọn khác cần cập nhật backlog mà không đổi oracle |
+| **OWN-SQL04-01** | SQL Server cho ứng dụng và sản phẩm | **OWNER_APPROVED** |
+| **OWN-SQL04-02** | Database-per-tenant (giữ D-01 lịch sử) | **OWNER_APPROVED** |
+| **OWN-SQL04-03** | .NET 10 LTS + ASP.NET Core Web API + Dapper + FluentMigrator; Modular Monolith/REST; explicit transaction | **OWNER_APPROVED** |
+| **OWN-SQL04-04** | React + TypeScript + Vite + PWA; online-first, không offline write | **OWNER_APPROVED** |
+| **OWN-SQL04-05** | Local-first + GitHub Actions CI, production ops chưa chốt | **OWNER_APPROVED** |
+| **OWN-SQL04-06** | APP-00 + APP-01A..E, Mixed AC-03 synthetic nonproduction theo từng increment | **OWNER_APPROVED** |
 
-**Đề nghị quy trình ra quyết định:** Owner chọn 01–06 và ghi date/rationale/alternatives trong repo ứng dụng; chỉ sau đó sinh solution/migrations. SQL-04 không “chốt stack hộ Owner”. Không có quyết định **Product Verification/EV/P0/Go-Live** ở đây. Bất kỳ thay đổi ngữ nghĩa business nào phải đề xuất tại canonical và nâng lock sau phê duyệt, không sửa snapshot local.
+**Quyền thực hiện:** APP-00/APP-01A..E được phép bắt đầu theo [application roadmap](../roadmap/app-00-app-01.md), từng PR phải có review/test/evidence trên chính HEAD. Không bao gồm Product Verification, EV/P0 hoặc Tenant Go-Live. Đổi business semantics phải đề xuất tại canonical và nâng lock sau phê duyệt; không sửa snapshot local.
 
 ## 7. Gói bàn giao và trạng thái
 
 - [x] Repo SQL chứa contract độc lập, runner, oracle, schema và links evidence; read-only `business/` không đổi.
 - [x] Có review/gap [SQL04-G01..G08](sql04-review.md) và backlog APP-00→APP-01E với exit tests cụ thể.
 - [x] Candidate commands/queries, boundaries, source/tenant/decimal/audit/idempotency, persistence ownership đã ghi.
-- [ ] Independent review SQL-04 PR.
-- [ ] Owner phê duyệt OWN-SQL04-01..06, sau đó app repo mới nhận stack/architecture decision riêng.
+- [x] Independent review SQL-04 PR #7 hoàn tất vòng 2, merge commit `7c61ac495aed6220b7d234efa910b377e92f70d4`.
+- [x] Owner phê duyệt OWN-SQL04-01..06 ngày 15/11/2026; ghi nhận tại [SQL-05 register](../decisions/2026-11-15-owner-app-decisions.md). Ứng dụng vẫn NOT_STARTED.
 - [ ] Actual app integration/API/UI/security, external EV, tenant go-live: **NOT_RUN**.
 
-**Handoff outcome:** `DOC_HANDOFF_CANDIDATE`; **không** phải `APP_IMPLEMENTED` hoặc `OWNER_ACCEPTED`.
+**Handoff outcome:** `SQL04_REVIEWED / OWNER_APP_AUTHORIZED`; **không** phải `APP_IMPLEMENTED`, `APP_CI_VERIFIED`, Product Verified hoặc Tenant Go-Live Accepted.
