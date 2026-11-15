@@ -101,6 +101,87 @@ BEGIN CATCH
     IF @Err<>51206 THROW;
 END CATCH;
 
+-- N-13c: shift A/B manifest cost but preserve total value 700.
+-- All affected movement and stock legs are changed consistently;
+-- source cost provenance (not the oracle totals) must catch the corruption.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    UPDATE ac03.ManifestLine
+       SET CostValue=CASE SourceLineId WHEN 'LOAD1-A' THEN 500 ELSE 200 END
+     WHERE SourceLineId IN ('LOAD1-A','LOAD1-B');
+    UPDATE ac03.StockMovement
+       SET CostValue=CASE SourceLineId WHEN 'LOAD1-A' THEN 500 ELSE 200 END
+     WHERE MovementRole='TRANSFER' AND SourceLineId IN ('LOAD1-A','LOAD1-B');
+    UPDATE ac03.StockPosting
+       SET DeltaValue=(CASE WHEN LegOrdinal=1 THEN -1 ELSE 1 END)
+                      *(CASE SourceLineId WHEN 'LOAD1-A' THEN 500 ELSE 200 END)
+     WHERE MovementRole='TRANSFER' AND SourceLineId IN ('LOAD1-A','LOAD1-B');
+    EXEC ac03.AssertInvariants;
+    THROW 51416, 'N13_MANIFEST_VALUE_SHIFT_PASSED', 1;
+END TRY
+BEGIN CATCH
+    SET @Err=ERROR_NUMBER();
+    IF @@TRANCOUNT>0 ROLLBACK;
+    IF @Err<>51206 THROW;
+END CATCH;
+
+-- N-13d: unload A150->200 and B100->50 while retaining total 250.
+-- Original manifest source cost must be used, not reallocated to the other pool.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    UPDATE ac03.UnloadLine
+       SET CostValue=CASE SourceLineId WHEN 'UNLOAD1-A' THEN 200 ELSE 50 END
+     WHERE SourceLineId IN ('UNLOAD1-A','UNLOAD1-B');
+    UPDATE ac03.StockMovement
+       SET CostValue=CASE SourceLineId WHEN 'UNLOAD1-A' THEN 200 ELSE 50 END
+     WHERE MovementRole='TRANSFER' AND SourceLineId IN ('UNLOAD1-A','UNLOAD1-B');
+    UPDATE ac03.StockPosting
+       SET DeltaValue=(CASE WHEN LegOrdinal=1 THEN -1 ELSE 1 END)
+                      *(CASE SourceLineId WHEN 'UNLOAD1-A' THEN 200 ELSE 50 END)
+     WHERE MovementRole='TRANSFER' AND SourceLineId IN ('UNLOAD1-A','UNLOAD1-B');
+    EXEC ac03.AssertInvariants;
+    THROW 51417, 'N13_UNLOAD_VALUE_SHIFT_PASSED', 1;
+END TRY
+BEGIN CATCH
+    SET @Err=ERROR_NUMBER();
+    IF @@TRANCOUNT>0 ROLLBACK;
+    IF @Err<>51207 THROW;
+END CATCH;
+
+-- N-14a: swap A/B delivery right ownership, preserving aggregate rights:
+-- A still held15 and B remaining0, but each delivery consumes wrong pool.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    UPDATE ac03.RightPosting
+       SET RightKind=CASE SourceLineId WHEN 'B20-01' THEN 'A' ELSE 'B' END,
+           RightId=CASE SourceLineId WHEN 'B20-01' THEN 'RA01' ELSE 'QB01' END,
+           DeltaQty=CASE SourceLineId WHEN 'B20-01' THEN -25 ELSE -20 END
+     WHERE EffectOrdinal=1 AND SourceLineId IN ('B20-01','A25-01');
+    EXEC ac03.AssertInvariants;
+    THROW 51418, 'N14_WRONG_DELIVERY_RIGHT_POOL_PASSED', 1;
+END TRY
+BEGIN CATCH
+    SET @Err=ERROR_NUMBER();
+    IF @@TRANCOUNT>0 ROLLBACK;
+    IF @Err<>51220 THROW;
+END CATCH;
+
+-- N-14b: ISSUE for B20 debits MAIN instead of TRIP, with total stock/value
+-- conservation unchanged. Per-delivery location provenance must catch it.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    UPDATE ac03.StockPosting SET LocationId='MAIN'
+     WHERE SourceLineId='B20-01' AND MovementRole='ISSUE' AND LegOrdinal=1;
+    EXEC ac03.AssertInvariants;
+    THROW 51419, 'N14_WRONG_DELIVERY_STOCK_LOCATION_PASSED', 1;
+END TRY
+BEGIN CATCH
+    SET @Err=ERROR_NUMBER();
+    IF @@TRANCOUNT>0 ROLLBACK;
+    IF @Err<>51220 THROW;
+END CATCH;
+EXEC ac03.AssertInvariants;
+
 -- N-04: replay previously accepted B/A/acceptance after rights and custody
 -- have decreased to zero. A replay must be checked BEFORE new preconditions.
 SELECT @BeforeCount=COUNT(*) FROM ac03.StockPosting;
