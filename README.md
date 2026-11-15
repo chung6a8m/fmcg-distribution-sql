@@ -24,6 +24,15 @@ Tree SHA phải bằng `businessTreeSha` trong `business.lock.json`. Workflow `.
 
 Xem **[Roadmap triển khai đang hoạt động](docs/roadmap/sql-first.md)**: SQL-01 Logical ERD → SQL-02 AC-03 runnable → SQL-03A/B/C kiểm thử quota/tiền/giá vốn → SQL-04 review & handoff. SQL Server 2017+ được đề xuất **chỉ làm engine thử nghiệm**, chưa phải quyết định DB production hoặc app stack.
 
+## SQL-01 — Logical ERD (đang review)
+
+- [ERD và entity/source/snapshot](docs/data-model/logical-erd.md)
+- [Bất biến, khóa logic và precision](docs/data-model/invariants.md)
+- [Transaction boundaries và concurrency contract](docs/data-model/transaction-boundaries.md)
+- [Mapping AC-03 T0..T6 / 13 oracle columns](docs/data-model/ac03-mapping.md)
+
+Đây là **thiết kế logic MODEL_ONLY**, không phải schema T-SQL đã chạy. Những OPEN QUESTION trong ERD/mapping chờ review trước khi chốt SQL-02. `business/` và expected/oracle vẫn read-only.
+
 ## Trạng thái
 
-Đã cố định **Business Baseline v1.0** và lập roadmap SQL-first. **Chưa có SQL implementation/test run, chưa chọn backend/UI/ORM và chưa có source ứng dụng.** Các checkpoint trong roadmap đều TODO cho tới khi thực thi và có evidence.
+Đã cố định **Business Baseline v1.0** và lập roadmap SQL-first. **SQL-01 có bản thiết kế trên PR để review; SQL-02..04 chưa triển khai**, chưa có physical DDL, SQL test run hay source ứng dụng. Chưa chọn backend/UI/ORM hoặc database production; không đánh dấu AC/EV là verified.
