@@ -35,8 +35,8 @@ SQL-01 là **thiết kế logic MODEL_ONLY** đã merge; không phải verificat
 
 ## SQL-02 — AC-03 executable (PR triển khai)
 
-Xem [SQL runner, schema, test và hướng dẫn](sql/README.md). Script T-SQL + PowerShell dựng **scratch database có guard**, thực thi T0..T6, so runtime 7×13 giá trị với golden oracle và kiểm âm/replay/fault. **Code đã viết nhưng SQL_ENGINE_NOT_RUN** trong môi trường tác giả PR; chỉ nâng trạng thái khi có kết quả trên SQL Server thật cùng evidence.
+Xem [SQL runner, schema, test và hướng dẫn](sql/README.md). Script T-SQL + PowerShell dựng **scratch database có guard**, thực thi T0..T6, so runtime 7×13 giá trị với golden oracle và kiểm âm/replay/fault. Đã **CI_SQL_VERIFIED** qua **2 lần chạy** trên Windows/SQL Server 2019 LocalDB (compatibility 150), mỗi lần 7/7 checkpoint và 91/91 cột PASS; guard sai target được xác nhận từ chối. [Evidence và TestRunIds](docs/evidence/2026-11-15-sql02-ac03-ci.md) — [CI run](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43702421402). SQL Server 2017/compat140 và máy local của người dùng chưa kiểm trực tiếp.
 
 ## Trạng thái
 
-**Business Baseline v1.0** đã freeze; SQL-01 đã merge dưới dạng MODEL_ONLY. SQL-02 đang được triển khai trên PR (chưa xác nhận engine/actual), SQL-03A/B/C và SQL-04 chưa triển khai. Chưa chọn backend/UI/ORM hoặc database production; không đánh dấu AC/EV là verified.
+**Business Baseline v1.0** đã freeze; SQL-01 đã merge dưới dạng MODEL_ONLY. SQL-02 [PR #3](https://github.com/chung6a8m/fmcg-distribution-sql/pull/3) **CI_SQL_VERIFIED nhưng chưa review/merge**, SQL-03A/B/C và SQL-04 chưa triển khai. Chưa chọn backend/UI/ORM hoặc database production; SQL PASS không đồng nghĩa AC E2E, EV hay tenant Go-Live được xác nhận.
