@@ -10,7 +10,7 @@
 | I-02 | A Confirm tạo A hold nhưng **không** AR, revenue, COGS hay giảm hàng vật lý | BR-03 | Chỉ RIGHT_POSTING +40, snapshot A; test T0 không có Delivery/AR/COGS |
 | I-03 | Cho mọi SKU/location: onHandEligible ≥ tổng quyền A/B (cùng scope) ≥ 0; A/B placement không chồng | BR-04/06 | Entitlement IDs A hoặc B XOR; transaction khóa source location/buckets khi cấp quyền; right-position reconcile với physical qty; constraint non-negative trên projection |
 | I-04 | A hold = grantedA − deliveredA − releasedA; B quota = grantedB − soldB − releasedB; mỗi consumption chỉ từ **đúng pool** | BR-03/04/11 | RIGHT_POSTING nguồn + vị trí; atomic check-and-decrement dưới khóa; FK right từ delivery/manifest; test B31 reject |
-| I-05 | MAIN→TRIP và TRIP→MAIN không làm đổi **tổng stockQty/stockValue** của tập location, không tạo AR/COGS/receipt | BR-04/07 | Paired STOCK_POSTING legs trong một source event/transaction; delta tổng bằng 0; test T1 và T6 |
+| I-05 | MAIN→TRIP và TRIP→MAIN không làm đổi **tổng stockQty/stockValue** của tập location, không tạo AR/COGS/receipt | BR-04/07 | Một STOCK_MOVEMENT và paired STOCK_POSTING legs trong cùng transaction; delta tổng bằng 0; test T1 và T6 |
 | I-06 | openingQty + inboundExternal − delivered = onHandAllLocations; không âm từng physical location. “soldQty” đếm DeliveryLine **thực giao**, không đếm load/retry | BR-03/04 | STOCK_POSTING và DELIVERY_LINE; check non-negative dưới lock; compare từng checkpoint |
 | I-07 | openingStockValue + inboundExternalValue − COGS = sum stockValue (trong AC-03 không có adjustment/return khách). Transfer không sinh COGS; delivery COGS dùng cost snapshot nguồn | BR-07 | COGS_EFFECT chỉ từ DELIVERY_LINE; moving-average theo SKU×location, lock qty/value cùng lúc; reconcile | 
 | I-08 | Tổng baseQty của từng A_ORDER_LINE đã giao ≤ confirmedBaseQty; A held không dùng để bán B, kể cả sau unload | BR-03/04 | Lock A order line + reservation; source FK / remaining; kiểm tổng + concurrency |
@@ -50,6 +50,7 @@
 | ManifestLine | (tenantId, manifestLineId), unique (tenantId, sourceLineId, effectRole) | XOR AReservation/BQuota; qty>0; each manifest source id stable |
 | Sale/Delivery/Line | (tenantId, saleId/deliveryId/lineId); unique source effect identity | XOR AOrderLine/BSaleLine trên DELIVERY_LINE; businessDate/ShipTo snapshot required |
 | BusinessEvent/SourceLine | (tenantId, producerId, commandId) unique + payloadHash; (tenantId, eventId, sourceLineId) | Same identity+hash replay; khác hash conflict; accepted/rejected khác với business effects |
+| StockMovement | (tenantId, movementId), unique (tenantId, sourceLineId, movementRole) | Một stock movement có source line/loại rõ; transfer có hai posting legs bù nhau, delivery issue gắn DeliveryLine |
 | Stock/right/cost/financial effects | (tenantId, sourceLineId, effectKind, ordinal) unique; mỗi effect có own stable ID | Cho phép nhiều leg có ordinal khác nhau trong **cùng** source; FK từ effect→source luôn cùng tenant |
 | StockCostBalance (projection) | (tenantId, skuId, locationId) | Với lot/quality về sau: eligibility theo lot/quality là chiều khác; cost vẫn theo SKU×location |
 | RightPosition (projection) | (tenantId, rightKind, rightId, locationId) | rightKind A/B XOR target; count per location không âm |

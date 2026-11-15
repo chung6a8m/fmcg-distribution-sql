@@ -74,7 +74,9 @@ erDiagram
 erDiagram
     TENANT ||--o{ BUSINESS_EVENT : "nhat ky nguon"
     BUSINESS_EVENT ||--|{ SOURCE_LINE : "chi tiet nguon"
-    SOURCE_LINE ||--o{ STOCK_POSTING : "tang giam kho"
+    SOURCE_LINE ||--o{ STOCK_MOVEMENT : "bien dong hang"
+    STOCK_MOVEMENT ||--|{ STOCK_POSTING : "cac leg so kho"
+    DELIVERY_LINE ||--o{ STOCK_MOVEMENT : "xuat giao"
     SOURCE_LINE ||--o{ RIGHT_POSTING : "di chuyen quyen"
     SOURCE_LINE ||--o{ COGS_EFFECT : "gia von ban"
     SOURCE_LINE ||--o{ GRANT_EFFECT : "han muc B"
@@ -103,6 +105,7 @@ erDiagram
 | Entity/effect | Ý nghĩa và cách diễn giải AC-03 |
 |---|---|
 | BUSINESS_EVENT + SOURCE_LINE | Định danh command + canonical payload hash, source document/line, xảy ra lúc nào/ghi nhận lúc nào, actor/tenant/trip, event kind; kết quả ACCEPTED/REJECTED được tách khỏi posted ledger |
+| STOCK_MOVEMENT | Một biến động hàng **có nguồn** (movementId, sourceLineId, kind=OPENING/INTERNAL_TRANSFER/DELIVERY_ISSUE/TRIP_UNLOAD, SKU, qty/value và from/to location hoặc ranh giới ngoài hệ thống); MANIFEST_LINE/DELIVERY_LINE liên quan khi thích hợp. Một movement có các stock postings legs cùng transaction, không phải sale mặc định |
 | STOCK_POSTING | **Leg có dấu** (location, SKU, deltaQty, deltaStockValue, sourceLine, ordinal). Transfer có hai leg bù nhau; giao/bán có leg âm. Opening là leg dương có nguồn. Không trừ A/B hai lần từ tồn |
 | RIGHT_POSTING | (rightKind=A/B, rightId, location, deltaQty, reason, sourceLine). Tổng tất cả location là A held/B quota remaining; mỗi location tạo RIGHT_POSITION **derived**. RELEASE B ở T6 không chuyển entitlement thành A |
 | COGS_EFFECT | Giá vốn xuất giao theo **CostBasisSnapshot** của DELIVERY_LINE; chuyển kho/xe không ghi COGS |
@@ -112,6 +115,8 @@ erDiagram
 | B_CREDIT_GRANT, GRANT_EFFECT | Grant ban đầu 100, B exposure 100 tiêu dùng; remaining=0; cash thu nợ hoặc nộp quỹ không tự nạp lại grant |
 | CUSTODY_EFFECT | Ledger tiền mặt nhân viên giữ: +200 khi cash CONFIRMED, −200 khi cashier thực nhận handover |
 | HANDOVER, CASHIER_ACCEPTANCE, FUND_EFFECT | OFFERED không tạo effect; CASHIER_ACCEPTED 200 tạo custody−200 và fund+200 **cùng một transaction**, không động AR |
+
+**Một StockMovement có sourceLineId ổn định** và tối thiểu một StockPosting leg, transfer nội bộ có đúng hai leg cân lượng/giá trị. StockPosting là ledger; StockMovement là nhóm chứng cứ nghiệp vụ để phân biệt opening/transfer/delivery/unload. Các khóa sourceLine + movementKind/legOrdinal và việc không post trùng được nêu tại [invariants.md](invariants.md).
 
 **Balances không phải nghiệp vụ nguồn mới:** STOCK_COST_BALANCE = SUM STOCK_POSTING theo (tenant, SKU, StockLocation); RIGHT_POSITION = SUM RIGHT_POSTING theo (tenant, kind, rightId, StockLocation); COGS = SUM COGS_EFFECT; AR = SUM openItem.grossDue − SUM allocations hợp lệ; custody/fund/grant = tổng các effect tương ứng. Nếu SQL-02 materialize các balances để khóa nhanh, phải chứng minh reconcile về nguồn.
 
@@ -138,7 +143,7 @@ Quyền lượng và hàng nằm ở đâu là **hai trục khác nhau**. Với 
 - TRIP (1) → B_QUOTA (0..n)/MANIFEST_LINE (0..n)/DELIVERY (0..n); quota có thể nhiều grant sources, **không giả định khóa duy nhất chỉ theo trip+SKU** khi chưa phê duyệt.
 - DELIVERY_LINE B có đúng một B_SALE_LINE; command B gồm sale/delivery/receipt (nếu có)/AR/stock/cost/right/grant trong một boundary, không có nửa giao dịch.
 - RECEIPT (1) → RECEIPT_ALLOCATION (0..n), AR_OPEN_ITEM (1) ← allocations (0..n); một Receipt có thể trả nhiều AR item, một AR item có thể nhận nhiều allocation sources.
-- Stock transfer MAIN↔TRIP là hai leg giá trị/lượng bù nhau; một transaction nguồn, không hai sale. Một lot có thể phải được quản lý sau, nhưng **AC-03 chưa cung cấp lot source** nên không bịa lot/FEFO vào fixture.
+- Stock transfer MAIN↔TRIP là một STOCK_MOVEMENT có hai STOCK_POSTING legs giá trị/lượng bù nhau; một transaction nguồn, không hai sale. Một lot có thể phải được quản lý sau, nhưng **AC-03 chưa cung cấp lot source** nên không bịa lot/FEFO vào fixture.
 - Định danh duy nhất và scale đề xuất xem [invariants.md](invariants.md), transaction và lock xem [transaction-boundaries.md](transaction-boundaries.md), đối chiếu từng checkpoint xem [ac03-mapping.md](ac03-mapping.md).
 
 ## 6. Chủ động hoãn (không suy là đã hoàn tất)
