@@ -120,13 +120,44 @@ CREATE TABLE ac09.ReceiptAllocation (
     CONSTRAINT FK_Ac09AllocationAr FOREIGN KEY (TenantId,PoolId,CommandId)
         REFERENCES ac09.ArOpenItem(TenantId,PoolId,CommandId)
 );
+-- Fixture-local credit funding has a durable opening source. Reservations
+-- are assigned to one command BEFORE the sale and cannot be borrowed by
+-- another command merely because the customer has an unspent balance.
+-- NEW credit from overpayment is recorded in CreditEffect; reserving such
+-- newly minted credit is deliberately deferred to SQL-03B.
+CREATE TABLE ac09.CreditSource (
+    TenantId varchar(32) NOT NULL,
+    PoolId varchar(40) NOT NULL,
+    SourceId varchar(40) NOT NULL,
+    CustomerId varchar(40) NOT NULL,
+    SourceKind varchar(12) NOT NULL CHECK (SourceKind='OPENING'),
+    Amount decimal(28,6) NOT NULL CHECK (Amount > 0),
+    CONSTRAINT PK_Ac09CreditSource PRIMARY KEY (TenantId,PoolId,SourceId),
+    CONSTRAINT UQ_Ac09CreditSourceCustomer UNIQUE (TenantId,PoolId,SourceId,CustomerId),
+    CONSTRAINT FK_Ac09CreditSourcePool FOREIGN KEY (TenantId,PoolId)
+        REFERENCES ac09.Pool(TenantId,PoolId)
+);
+CREATE TABLE ac09.CreditReservation (
+    TenantId varchar(32) NOT NULL,
+    PoolId varchar(40) NOT NULL,
+    CommandId varchar(40) NOT NULL,
+    SourceId varchar(40) NOT NULL,
+    CustomerId varchar(40) NOT NULL,
+    Amount decimal(28,6) NOT NULL CHECK (Amount > 0),
+    CONSTRAINT PK_Ac09CreditReservation PRIMARY KEY (TenantId,PoolId,CommandId),
+    CONSTRAINT UQ_Ac09CreditReservationCustomer UNIQUE (TenantId,PoolId,CommandId,CustomerId),
+    CONSTRAINT FK_Ac09CreditReservationSource FOREIGN KEY (TenantId,PoolId,SourceId,CustomerId)
+        REFERENCES ac09.CreditSource(TenantId,PoolId,SourceId,CustomerId)
+);
 CREATE TABLE ac09.CreditApplication (
     TenantId varchar(32) NOT NULL, PoolId varchar(40) NOT NULL, CommandId varchar(40) NOT NULL,
     CustomerId varchar(40) NOT NULL,
     Amount decimal(28,6) NOT NULL CHECK (Amount > 0),
     CONSTRAINT PK_Ac09CreditApplication PRIMARY KEY (TenantId,PoolId,CommandId),
     CONSTRAINT FK_Ac09CreditApplicationAr FOREIGN KEY (TenantId,PoolId,CommandId)
-        REFERENCES ac09.ArOpenItem(TenantId,PoolId,CommandId)
+        REFERENCES ac09.ArOpenItem(TenantId,PoolId,CommandId),
+    CONSTRAINT FK_Ac09CreditApplicationReservation FOREIGN KEY (TenantId,PoolId,CommandId,CustomerId)
+        REFERENCES ac09.CreditReservation(TenantId,PoolId,CommandId,CustomerId)
 );
 CREATE TABLE ac09.CreditEffect (
     TenantId varchar(32) NOT NULL, PoolId varchar(40) NOT NULL, CommandId varchar(40) NOT NULL,
@@ -167,6 +198,20 @@ CREATE TABLE ac09.RaceAttempt (
     ErrorNumber int NULL,
     CONSTRAINT PK_Ac09RaceAttempt PRIMARY KEY (RaceId,AttemptId),
     CONSTRAINT FK_Ac09RaceAttemptGate FOREIGN KEY (RaceId) REFERENCES ac09.RaceGate(RaceId)
+);
+-- A third, independent SQL connection records a real KEY lock wait on Pool.
+-- StartedUtc overlap alone is insufficient: it can also pass serial execution.
+CREATE TABLE ac09.RaceLockObservation (
+    RaceId varchar(40) NOT NULL PRIMARY KEY,
+    HolderSessionId smallint NOT NULL,
+    WaiterSessionId smallint NOT NULL,
+    WaitType nvarchar(64) NOT NULL,
+    HolderMode varchar(12) NOT NULL,
+    WaiterMode varchar(12) NOT NULL,
+    ResourceDescription nvarchar(256) NOT NULL,
+    ObservedUtc datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_Ac09RaceLockGate FOREIGN KEY (RaceId)
+        REFERENCES ac09.RaceGate(RaceId)
 );
 GO
 CREATE VIEW ac09.PoolBalances AS
@@ -217,6 +262,26 @@ BEGIN
                 AND (StockRemaining<0 OR QuotaRemaining<0 OR GrantRemaining<0
                      OR ArRemaining<0 OR CreditRemaining<0))
         THROW 53111, 'POOL_BALANCE_NEGATIVE', 1;
+    -- Synthetic opening CustomerCredit must have matching same-customer
+    -- sources. Reserving from a source must never overbook its amount.
+    IF EXISTS(
+        SELECT 1 FROM ac09.Pool p
+        WHERE p.TenantId='T09' AND p.PoolId=@PoolId
+          AND (p.OpeningCustomerCredit<>ISNULL((
+                 SELECT SUM(cs.Amount) FROM ac09.CreditSource cs
+                 WHERE cs.TenantId=p.TenantId AND cs.PoolId=p.PoolId),0)
+               OR EXISTS(SELECT 1 FROM ac09.CreditSource cs
+                  WHERE cs.TenantId=p.TenantId AND cs.PoolId=p.PoolId
+                    AND cs.CustomerId<>p.CustomerId)))
+        THROW 53115, 'CREDIT_OPENING_SOURCE_MISMATCH', 1;
+    IF EXISTS(
+        SELECT 1 FROM ac09.CreditSource cs
+        WHERE cs.TenantId='T09' AND cs.PoolId=@PoolId
+          AND cs.Amount<ISNULL((
+              SELECT SUM(r.Amount) FROM ac09.CreditReservation r
+              WHERE r.TenantId=cs.TenantId AND r.PoolId=cs.PoolId
+                AND r.SourceId=cs.SourceId),0))
+        THROW 53116, 'CREDIT_SOURCE_OVER_RESERVED', 1;
     -- Every sale has exact per-source stock, quota, COGS, AR, receipt,
     -- allocation, grant and CustomerCredit/custody effect provenance.
     IF EXISTS(
@@ -229,6 +294,7 @@ BEGIN
         LEFT JOIN ac09.GrantUse g ON g.TenantId=s.TenantId AND g.PoolId=s.PoolId AND g.CommandId=s.CommandId
         LEFT JOIN ac09.ReceiptAllocation a ON a.TenantId=s.TenantId AND a.PoolId=s.PoolId AND a.CommandId=s.CommandId
         LEFT JOIN ac09.CreditApplication ca ON ca.TenantId=s.TenantId AND ca.PoolId=s.PoolId AND ca.CommandId=s.CommandId
+        LEFT JOIN ac09.CreditReservation cr ON cr.TenantId=s.TenantId AND cr.PoolId=s.PoolId AND cr.CommandId=s.CommandId
         LEFT JOIN ac09.CustodyEffect cu ON cu.TenantId=s.TenantId AND cu.PoolId=s.PoolId AND cu.CommandId=s.CommandId
         WHERE s.TenantId='T09' AND s.PoolId=@PoolId AND
           (s.CustomerId<>p.CustomerId OR i.Qty IS NULL OR i.Qty<>s.Qty
@@ -241,6 +307,9 @@ BEGIN
            OR (s.CashApplied=0 AND a.Amount IS NOT NULL)
            OR (s.ReservedCreditApplied>0 AND (ca.Amount IS NULL OR ca.Amount<>s.ReservedCreditApplied OR ca.CustomerId<>s.CustomerId))
            OR (s.ReservedCreditApplied=0 AND ca.Amount IS NOT NULL)
+           OR (s.ReservedCreditApplied>0 AND
+                (cr.Amount IS NULL OR cr.Amount<>s.ReservedCreditApplied OR cr.CustomerId<>s.CustomerId))
+           OR (s.ReservedCreditApplied=0 AND cr.CommandId IS NOT NULL)
            OR (s.ActualCashReceived>0 AND (cu.Amount IS NULL OR cu.Amount<>s.ActualCashReceived))
            OR (s.ActualCashReceived=0 AND cu.Amount IS NOT NULL)
            OR ISNULL((SELECT SUM(r.Amount) FROM ac09.Receipt r

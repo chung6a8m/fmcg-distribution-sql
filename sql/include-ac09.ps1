@@ -32,6 +32,13 @@ function Invoke-ParallelSqlRace {
                 }
             } -ArgumentList $SqlcmdPath,$ServerInstance,$script:DbName,$RaceId,$side
         }
+        # Third SQL connection observes an actual Pool KEY lock wait, not only
+        # two overlapping client timestamps. This fails closed if sessions
+        # happened to execute serially or DMV visibility is insufficient.
+        $witness = Run-Sql -Database $script:DbName -Query "EXEC ac09.ObserveRaceContention '$RaceId';" -Label "ac09 lock witness $RaceId"
+        if ($witness -ne 'LOCK_CONTENTION_OBSERVED') {
+            throw "SQL03A_RACE_LOCK_NOT_OBSERVED: $RaceId : $witness"
+        }
         $null = Wait-Job -Job $jobs -Timeout 100
         $results = @()
         foreach ($job in $jobs) {
@@ -81,12 +88,26 @@ foreach ($case in $cases) {
     # evidence is deliberately P, fixture-only, not an eligible payment.
     $bankPending = if ($id -eq 'BANK_PENDING') { $p } else { '0' }
     if ([decimal]$actualCash -lt [decimal]$cash) { throw "AC09_INVALID_ORACLE_CASH_INPUT: $id" }
-    # Synthetic trip has one unit/one B right, source cost10. The only
-    # opening credit is pre-reserved for the credit20 branch.
+    # Synthetic trip has one unit/one B right, source cost10. Opening credit
+    # gets its own source and command-bound reservation before ExecuteSale.
     $setup = "SET NOCOUNT ON; INSERT ac09.Pool VALUES('T09','$id','TR_$id','SKU01','C_B',1,1,$grant,$credit,10); SELECT 'SEEDED';"
     Assert-OwnedMarker $script:DbName $script:TestRunId
     $seeded = Run-Sql -Database $script:DbName -Query $setup -Label "ac09 seed $id"
     if ($seeded -ne 'SEEDED') { throw "AC09_POOL_SEED_FAILED $id : $seeded" }
+    if ([decimal]$credit -gt 0) {
+        $sourceId = "OPEN_$id"
+        $creditSetup = @"
+SET NOCOUNT ON;
+INSERT ac09.CreditSource(TenantId,PoolId,SourceId,CustomerId,SourceKind,Amount)
+VALUES('T09','$id','$sourceId','C_B','OPENING',$credit);
+DECLARE @ReserveResult varchar(32);
+EXEC ac09.ReserveCredit @PoolId='$id',@SourceId='$sourceId',
+     @CommandId='SALE_$id',@Amount=$credit,@Result=@ReserveResult OUTPUT;
+SELECT @ReserveResult;
+"@
+        $reservation = Run-Sql -Database $script:DbName -Query $creditSetup -Label "ac09 reserve $id"
+        if ($reservation -ne 'RESERVED') { throw "AC09_CREDIT_NOT_RESERVED: $id : $reservation" }
+    }
     $sql = @"
 SET NOCOUNT ON;
 DECLARE @R varchar(32);
@@ -170,6 +191,13 @@ Assert-OwnedMarker $script:DbName $script:TestRunId
 $assert = Run-Sql -Database $script:DbName -File (Join-Path $PSScriptRoot 'tests/ac09-races-assert.sql') -Label 'ac09 concurrency asserts'
 if ($assert -ne 'TWO_INDEPENDENT_TWO_SESSION_RACES_PASS') { throw "AC09_RACE_NOT_VERIFIED: $assert" }
 foreach ($race in $report['Ac09Races']) { $race['Status'] = 'PASS' }
+$report['Ac09RaceLockActual'] = Run-Sql -Database $script:DbName -Query @"
+SET NOCOUNT ON;
+SELECT CONCAT(RaceId,'|',HolderSessionId,'|',WaiterSessionId,'|',
+              WaitType,'|',HolderMode,'|',WaiterMode,'|',ResourceDescription,'|',
+              CONVERT(varchar(23),ObservedUtc,121))
+FROM ac09.RaceLockObservation ORDER BY RaceId;
+"@ -Label 'ac09 witnessed pool lock waits'
 $report['Ac09RacesActual'] = Run-Sql -Database $script:DbName -Query @"
 SET NOCOUNT ON;
 SELECT CONCAT(RaceId,'|',AttemptId,'|',SessionId,'|',
