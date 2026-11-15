@@ -1,7 +1,7 @@
 # SQL-04 — Review mô hình, coverage và giới hạn SQL prototype
 
 - **Ngày:** 2026-11-15.
-- **Trạng thái tài liệu:** `HANDOFF_CANDIDATE / REVIEW_PENDING`. Đây là đánh giá trên repository, **không** phải kết quả chạy test mới hay Owner Acceptance.
+- **Trạng thái tài liệu:** `SQL04_HANDOFF_REVIEWED / REVIEW_R2_PASS` sau [PR #7 merge](https://github.com/chung6a8m/fmcg-distribution-sql/pull/7); đây là đánh giá trên SQL prototype tại mốc nêu dưới, **không** phải chạy SQL/app mới hoặc Product/Tenant Acceptance. Quyết định Owner APP ghi riêng tại [SQL-05](../decisions/2026-11-15-owner-app-decisions.md).
 - **Nguồn đọc:** `main` sau merge PR #6, commit `cf4d9079980e432728d1338525db1220bc3f953f`; SQL-01/02/03A/03B/03C đã merge. Nếu code thay đổi sau mốc này phải đối chiếu lại.
 - **Business contract:** [`business.lock.json`](../../business.lock.json), `business-v1.0.0`; tree `business/` = `c9a4164a99ea57e1d5f9bc8711285c6d3705f8e3`, read-only.
 - **Handoff tiếp:** [Hợp đồng và backlog vertical slice ứng dụng](sql04-app-handoff.md).
@@ -95,7 +95,7 @@ Các expected/scenario chỉ đọc từ [AC](../../business/acceptance.md), [ca
 | **SQL04-G05 / TEST_GAP** | Two-session contention chỉ verified ở `ac09.Pool` với `SERIALIZABLE` + `UPDLOCK,HOLDLOCK`; AC03 manifest/AR, AC21 custody, AC06 return/revalue, cross-module chưa race-tested. | **OPEN → integrated concurrency/rollback suite** |
 | **SQL04-G06 / TEST_GAP** | SQL 2017 compat140, workload/perf, indexes/lock order/deadlock/restore/migrations chưa đo trong production-like environment. | **OPEN → engineering verification theo stack được chọn** |
 | **SQL04-G07 / EXTERNAL_GATE** | Hóa đơn/provider, kế toán, pháp lý/retention, cutover toàn kho, EV-01..15/P0/pilot chưa có verification thật. | **PENDING/NO_GO; không kéo vào SQL-only completion** |
-| **SQL04-G08 / OWNER_DECISION** | DB engine & tenancy (lịch sử D-01 DB-per-tenant), backend/API/UI/PWA/ORM/hosting, app first slice cần Owner định đoạt theo evidence. | **PENDING; xem handoff** |
+| **SQL04-G08 / OWNER_DECISION** | DB engine & tenancy (lịch sử D-01 DB-per-tenant), backend/API/UI/PWA/ORM/hosting, app first slice cần Owner định đoạt theo evidence. | **OWNER_APPROVED 15/11/2026** qua [SQL-05 register](../decisions/2026-11-15-owner-app-decisions.md); chưa tự đóng G01..G07 |
 
 **Không có thay đổi SQL schema/semantic trong SQL-04.** Mọi đổi business policy, oracle hoặc các quyết định lịch sử phải có quy trình Owner tại nguồn canonical; không sửa `business/` để đóng gap.
 
@@ -105,7 +105,7 @@ Các expected/scenario chỉ đọc từ [AC](../../business/acceptance.md), [ca
 - [x] Liệt kê đủ 21 AC với mức SQL, `EV/P0` tách riêng.
 - [x] Review keys/tenant/source, decimal, lock, evidence/races và cách reproduce.
 - [x] Gắn GAP ID, tài liệu handoff commands/queries/persistence/test gates.
-- [ ] **Independent review PR SQL-04** và xác nhận disposition từng gap.
-- [ ] **Owner decision riêng** cho stack/tenancy và quyền bắt đầu app; không giả là đã được phê duyệt.
+- [x] **Independent review PR SQL-04 #7** vòng 2 PASS, không có finding mới; merge commit `7c61ac495aed6220b7d234efa910b377e92f70d4`.
+- [x] **Owner decision riêng** cho stack/tenancy và APP-00/01 authorization: OWN-SQL04-01..06 APPROVED ngày 15/11/2026 ([register](../decisions/2026-11-15-owner-app-decisions.md)).
 
-**Kết luận:** `SQL_EXECUTABLE_REFERENCE_READY_FOR_REVIEW`; **APP_STACK_UNDECIDED**, **APP_INTEGRATION_NOT_RUN**, **GO_LIVE_NOT_ACCEPTED**.
+**Kết luận:** `SQL04_HANDOFF_REVIEWED`; **APP_STACK_OWNER_APPROVED**, **APP_INTEGRATION_NOT_RUN**, **GO_LIVE_NOT_ACCEPTED**. G01..G07 vẫn còn nghĩa vụ riêng.
