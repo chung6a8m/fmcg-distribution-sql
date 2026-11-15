@@ -43,14 +43,14 @@ CREATE TABLE ac06.Command (
 CREATE TABLE ac06.StockPosting (
     TenantId varchar(32) NOT NULL,
     CommandId varchar(40) NOT NULL,
-    LineNo int NOT NULL CHECK(LineNo>0),
+    EntryNo int NOT NULL CHECK(EntryNo>0),
     SkuId varchar(32) NOT NULL,
     LocationId varchar(32) NOT NULL,
     Kind varchar(12) NOT NULL
       CHECK(Kind IN ('RECEIVE','ISSUE','RETURN','RETURN_REVAL')),
     QtyDelta int NOT NULL,
     ValueDelta decimal(28,0) NOT NULL,
-    CONSTRAINT PK_Ac06StockPosting PRIMARY KEY(TenantId,CommandId,LineNo),
+    CONSTRAINT PK_Ac06StockPosting PRIMARY KEY(TenantId,CommandId,EntryNo),
     CONSTRAINT FK_Ac06StockCommand FOREIGN KEY(TenantId,CommandId)
       REFERENCES ac06.Command(TenantId,CommandId),
     CONSTRAINT FK_Ac06StockLocation FOREIGN KEY(TenantId,SkuId,LocationId)
@@ -146,18 +146,18 @@ CREATE TABLE ac06.ReturnCostAdjustment (
 CREATE TABLE ac06.CostEffect (
     TenantId varchar(32) NOT NULL,
     CommandId varchar(40) NOT NULL,
-    LineNo int NOT NULL CHECK(LineNo>0),
+    EntryNo int NOT NULL CHECK(EntryNo>0),
     SourceId varchar(40) NOT NULL,
     Kind varchar(16) NOT NULL
       CHECK(Kind IN ('ISSUE','REFUND','ISSUE_REVAL','REFUND_REVAL')),
     DeltaCogs decimal(28,0) NOT NULL,
-    CONSTRAINT PK_Ac06CostEffect PRIMARY KEY(TenantId,CommandId,LineNo),
+    CONSTRAINT PK_Ac06CostEffect PRIMARY KEY(TenantId,CommandId,EntryNo),
     CONSTRAINT FK_Ac06EffectCommand FOREIGN KEY(TenantId,CommandId)
       REFERENCES ac06.Command(TenantId,CommandId),
     CONSTRAINT FK_Ac06EffectSource FOREIGN KEY(TenantId,SourceId)
       REFERENCES ac06.IssueSource(TenantId,SourceId)
 );
-CREATE TABLE ac06.Checkpoint (
+CREATE TABLE ac06.CostCheckpoint (
     StepOrdinal int NOT NULL PRIMARY KEY,
     StepName varchar(24) NOT NULL UNIQUE,
     SourceVersion int NOT NULL,
