@@ -20,8 +20,8 @@
 | Chặng | Trạng thái | Mục tiêu / AC | Đầu ra và điều kiện hoàn tất |
 |---|---|---|---|
 | **SQL-01 — Logical ERD** | TODO | Domain → quan hệ, source, snapshot, bất biến, transaction boundaries cho **AC-03** (BR-03/04/07/11/12/13) | ERD slice + mapping từng bước AC-03 + quy tắc khóa/unique/decimal; không còn dữ liệu chủ chốt chưa có chỗ lưu |
-| **SQL-02 — AC-03 SQL executable** | TODO | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ sạch; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
-| **SQL-03A — B credit, atomicity** | TODO | **AC-09** và fault liên quan **AC-11** (BR-11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **2 kết nối thật** tranh grant/quota không cùng commit |
+| **SQL-02 — AC-03 SQL executable** | TODO | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
+| **SQL-03A — B credit, atomicity** | TODO | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
 | **SQL-03B — Thu, phân bổ, nộp quỹ** | TODO | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
 | **SQL-03C — Giá vốn và hoàn** | TODO | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
 | **SQL-04 — Review và handoff cho app** | TODO | Đánh giá mô hình sau các SQL scenarios | Review constraints/concurrency, ghi gap và quyết định còn mở; xác định vertical slice app đầu tiên và tiêu chí kiểm thử; **sau đó mới chốt app stack** |
@@ -47,6 +47,7 @@
 
 - [ ] Tạo **minimal physical schema** từ SQL-01; có PK/FK/unique/check/index cần thiết, decimal exact cho tiền/giá vốn/lượng, source identity và scope tenant. Không đưa DDL production hoặc tối ưu premature.
 - [ ] Script dựng database thử nghiệm, reset/seed sạch theo opening snapshot **riêng của AC-03**. `business/reference-data/master-data/seed.json` là tham chiếu khái niệm, **không** phải opening AC-03; giá trị AC-03 có unit `SYNTHETIC_UNITLESS`, không diễn giải là VND.
+- [ ] **Guard database thử nghiệm trước mọi thao tác phá hủy (`DROP`/`TRUNCATE`/reset):** mặc định tạo database scratch riêng cho run; kiểm tra rõ server/instance và database đích, không dựa vào tên database đơn thuần. Nếu tái sử dụng scratch DB, phải xác thực marker sở hữu do harness tạo trong DB; từ chối DB hệ thống, DB tồn tại không có marker đúng, hoặc target không hợp lệ. Guard thất bại → dừng **trước mutation**, lệnh trả exit code khác 0; có negative test trỏ nhầm DB để xác minh từ chối. Không được reset dữ liệu ngoài phạm vi test.
 - [ ] Chạy lần lượt `T0` (MAIN100 @ value1000, A hold40/B quota30), `T1_LOAD` (load70), `T2_REJECT` (B31 fail, state unchanged), `T3_B20` (B20/receipt200/AR_B100), `T4_A25` (A25/AR_A375), `T5_HANDOVER` (cashier accepted200), `T6_RETURN` (xe trả25).
 - [ ] **Assert đủ 13 cột** `step, mainQty, tripQty, soldQty, mainCost, tripCost, cogs, aHold, bQuota, arA, arB, custody, fund` so với `business/reference-data/expected-results/golden-oracles.json#AC-03`. Harness đọc JSON gốc tại runtime hoặc sinh expected từ JSON một cách xác định; **không chép tay một bộ golden mới**.
 - [ ] Khẳng định các bất biến: không âm, bảo toàn qty/value, không double-consume A/B, load không sinh COGS/AR, reject không ghi dở, custody chỉ giảm khi cashier accept, B effects cùng commit/rollback.
@@ -55,7 +56,7 @@
 
 **File dự kiến:** `sql/schema/`, `sql/seed/`, `sql/scenarios/ac03.sql`, `sql/tests/`, `sql/run-tests.ps1`, `sql/README.md`. Tên file con tùy implementation, nhưng phải có một entrypoint rõ.
 
-**Exit SQL-02 (gate sang SQL-03):** schema dựng từ sạch, AC-03 chạy lặp lại PASS, T2 không có tác động, all 13 oracle fields từng bước khớp, kết quả có khả năng kiểm tra lại. Oracle AC-03 đánh dấu `MODEL_ONLY` ở nguồn ngay cả khi SQL harness pass; bằng chứng SQL được lưu riêng.
+**Exit SQL-02 (gate sang SQL-03):** schema dựng từ scratch DB sạch, AC-03 chạy lặp lại PASS, T2 không có tác động, all 13 oracle fields từng bước khớp; kiểm thử target DB sai/không có marker phải FAIL trước mutation với exit code khác 0. Kết quả có khả năng kiểm tra lại. Oracle AC-03 đánh dấu `MODEL_ONLY` ở nguồn ngay cả khi SQL harness pass; bằng chứng SQL được lưu riêng.
 
 ## 5. SQL-03 — Các ca khó cần ưu tiên
 
@@ -64,8 +65,10 @@
 - Cash 60/100, cash 60 + reserved credit 20, bank pending, overpay120 theo `additional-oracles.json#AC-09`; AR/quota/grant/credit/custody chính xác.
 - Một transaction B phải ghi toàn bộ sale/delivery, stock/cost, receipt/allocation, open AR, quota/grant/credit source effects hoặc **không ghi gì**. Thử fault sau ghi giữa chừng.
 - Gửi lại cùng command ID + payload → không nhân đôi effect; cùng ID + payload khác → conflict. Kịch bản dependency/persistence đầy đủ của AC-11 **chưa được tuyên bố hoàn tất** nếu mới thử retry.
-- **Concurrency thật:** 2 SQL sessions cùng tranh grant100, mỗi bên đòi80; không cùng thành công. Kiểm tra sau commit/rollback, không thay bằng hai lần chạy tuần tự.
-- Gate: assertions, negative tests, concurrency evidence, xác định rõ locking/serialization mechanism.
+- **Concurrency thật — credit grant (AC-09):** 2 SQL sessions, hai command ID khác nhau cùng tranh grant100, mỗi bên cần exposure80; bố trí BQuota và tồn xe đủ cho cả hai để **chỉ grant là giới hạn tranh chấp**. Không cả hai commit.
+- **Concurrency thật — BQuota (BR-04/11/12, SOP-03):** 2 SQL sessions, hai command ID khác nhau cùng tranh BQuota100, mỗi bên bán qty80; bố trí credit grant đủ rộng (hoặc verified receipt đủ để exposure không là giới hạn) để **chỉ BQuota là giới hạn tranh chấp**. Không cả hai commit.
+- Sau mỗi ca, xác minh persisted stock/BQuota/grant không âm hoặc vượt quyền, chỉ có effect của các command đã commit, không có partial effect/duplicate; thử commit/rollback bằng **2 kết nối đồng thời thật**, không thay bằng các lần chạy tuần tự. Không đổi oracle AC-09 gốc.
+- Gate: assertions, negative tests, **evidence riêng cho cả hai ca grant và quota**, xác định rõ locking/serialization mechanism.
 
 ### SQL-03B — AC-21 (AC-20 tùy chọn)
 
