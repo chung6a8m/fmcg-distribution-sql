@@ -26,7 +26,7 @@
 - Quyền A, B quota/grant, manifest, stock/source/AR/COGS/cash custody/fund, maker-checker, retry/conflict/fault và tenant boundary phải có hậu điều kiện và negative tests tương ứng.
 - Bất biến: A confirm/load không ghi AR/COGS; B sale/delivery/receipt atomic; B31/P465 + offered cash465 từ chối đúng `REJECTED_QUOTA`/`B_QUOTA_INSUFFICIENT` không có business effect.
 - Database skeleton mới là app persistence; `ac03`, `ac09`, `ac21`, `ac06` chỉ là executable references độc lập, không phải một integrated schema.
-- Repo SQL tiếp tục lưu prototype/evidence; app code và roadmap thực thi nên sống trong một repository ứng dụng độc lập. `chung6a8m/fmcg-distribution-dotnet` là **địa chỉ dự kiến, cần xác minh/tạo và cấp quyền ghi** trước khi push; không coi tồn tại chỉ vì đã được đặt tên.
+- Repo SQL tiếp tục lưu prototype/evidence; app code và roadmap thực thi sống trong repository ứng dụng độc lập **[chung6a8m/fmcg-distribution-dotnet](https://github.com/chung6a8m/fmcg-distribution-dotnet)**, đã khởi tạo và mở [APP-00A PR #1](https://github.com/chung6a8m/fmcg-distribution-dotnet/pull/1). PR đang review/CI, chưa coi APP verified.
 
 ## Quyết định chưa nằm trong phạm vi phê duyệt
 
