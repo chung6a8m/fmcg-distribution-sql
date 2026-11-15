@@ -1,0 +1,39 @@
+name: SQL-03B AC-21 receipt allocation, custody and advance
+on:
+  pull_request:
+    paths:
+      - 'sql/**'
+      - '.github/workflows/sql-ac21.yml'
+      - 'business/reference-data/expected-results/golden-oracles.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ac21-scratch:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start SQL Server LocalDB
+        shell: pwsh
+        run: |
+          Get-Command sqlcmd -ErrorAction Stop | Out-Null
+          & sqllocaldb start MSSQLLocalDB
+          if ($LASTEXITCODE -ne 0) { throw 'SQL LocalDB start failed' }
+      - name: AC-03 regression then AC-21 and AC-20 twice on separate guarded scratch DBs
+        shell: pwsh
+        run: |
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03B
+          if ($LASTEXITCODE -ne 0) { throw 'SQL-03B run 1 failed' }
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03B
+          if ($LASTEXITCODE -ne 0) { throw 'SQL-03B run 2 failed' }
+      - name: Upload AC-21 and AC-20 actual, expected, error and guard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ac21-sql03b-evidence
+          path: sql/test-results/*.json
+          if-no-files-found: warn
+          retention-days: 7
