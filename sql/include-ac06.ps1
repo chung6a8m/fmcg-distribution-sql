@@ -6,17 +6,20 @@ $report['Ac06Oracle'] = 'business/reference-data/expected-results/additional-ora
 $report['Ac06Fields'] = @()
 $report['Ac06Checkpoints'] = @()
 $report['Ac06Negative'] = 'NOT_RUN'
+$report['Ac06Rounding'] = 'NOT_RUN'
 foreach ($file in @(
     'schema/008_ac06.sql',
     'schema/009_ac06_commands.sql',
     'scenarios/ac06.sql',
-    'tests/ac06-negative.sql'
+    'tests/ac06-negative.sql',
+    'tests/ac06-rounding.sql'
 )) {
     Assert-OwnedMarker $script:DbName $script:TestRunId
     $path = Join-Path $PSScriptRoot ($file.Replace('/', [IO.Path]::DirectorySeparatorChar))
     [void](Run-Sql -Database $script:DbName -File $path -Label $file)
 }
 $report['Ac06Negative'] = 'PASS'
+$report['Ac06Rounding'] = 'PASS'
 $oracleFile = Join-Path $root 'business/reference-data/expected-results/additional-oracles.json'
 $golden = Get-Content -LiteralPath $oracleFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $oracle = $golden.PSObject.Properties['AC-06'].Value

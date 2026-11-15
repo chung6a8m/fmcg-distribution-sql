@@ -201,6 +201,41 @@ CROSS APPLY (
     ORDER BY v.VersionNo DESC
 ) cv;
 GO
+-- Exact cumulative whole-VND proration; avoid rounding a decimal
+-- division to 6 fractional digits before ROUND(...,0).
+-- The remainder (less than INT_MAX) times cumulativeQty (at most INT_MAX)
+-- fits BIGINT; the final rounded result is never above TotalCost.
+CREATE FUNCTION ac06.RoundProratedCost
+(
+    @TotalCost decimal(28,0), @CumulativeQty int, @SourceQty int
+)
+RETURNS decimal(28,0)
+WITH SCHEMABINDING
+AS
+BEGIN
+    IF @TotalCost IS NULL OR @TotalCost<0 OR
+       @CumulativeQty IS NULL OR @SourceQty IS NULL OR
+       @SourceQty<=0 OR @CumulativeQty<0 OR @CumulativeQty>@SourceQty
+        RETURN NULL;
+    DECLARE @Remainder bigint,
+            @WholePerUnit decimal(28,0),
+            @FractionNumerator bigint,
+            @FractionWhole bigint,
+            @FractionRemainder bigint;
+    SET @Remainder=CONVERT(bigint,@TotalCost % @SourceQty);
+    -- Division is exact because the remainder has already been removed.
+    SET @WholePerUnit=(@TotalCost-CONVERT(decimal(28,0),@Remainder))/@SourceQty;
+    SET @FractionNumerator=@Remainder*CONVERT(bigint,@CumulativeQty);
+    SET @FractionWhole=@FractionNumerator/CONVERT(bigint,@SourceQty);
+    SET @FractionRemainder=@FractionNumerator%CONVERT(bigint,@SourceQty);
+    -- For nonnegative amounts, exact half rounds up (away from zero).
+    RETURN CONVERT(decimal(28,0),
+       @WholePerUnit*CONVERT(decimal(28,0),@CumulativeQty)
+       +@FractionWhole
+       +CASE WHEN @FractionRemainder*CONVERT(bigint,2)>=@SourceQty
+          THEN 1 ELSE 0 END);
+END;
+GO
 -- AC-06 oracle-facing actuals: original second refund is a counterfactual
 -- computed at historical cost, not an additional posted return.
 CREATE VIEW ac06.CaseActual AS
@@ -208,22 +243,19 @@ SELECT s.TenantId,s.SourceId,
        s.IssueQty AS SourceQty,
        s.OriginalCost AS SourceOriginalCost,
        firstReturn.RefundBase AS FirstRefund,
-       CONVERT(decimal(28,0),ROUND(
-           CONVERT(decimal(28,6),s.OriginalCost)
-           * (firstReturn.ReceivedQty + secondReturn.ReceivedQty)
-           / s.IssueQty,0) -
-           ROUND(CONVERT(decimal(28,6),s.OriginalCost)
-           * firstReturn.ReceivedQty/s.IssueQty,0)) AS OriginalSecondRefund,
+       (ac06.RoundProratedCost(s.OriginalCost,
+           firstReturn.ReceivedQty+secondReturn.ReceivedQty,s.IssueQty)
+         -ac06.RoundProratedCost(s.OriginalCost,
+           firstReturn.ReceivedQty,s.IssueQty)) AS OriginalSecondRefund,
        cv.TotalCost AS SourceAdjustedCost,
        ISNULL(firstCorrection.DeltaRefund,CONVERT(decimal(28,0),0))
            AS FirstRefundAdjustment,
        secondReturn.RefundBase AS FinalSecondRefund,
        CONVERT(decimal(28,0),firstReturn.RefundBase +
-           ROUND(CONVERT(decimal(28,6),s.OriginalCost)
-           * (firstReturn.ReceivedQty + secondReturn.ReceivedQty)
-           / s.IssueQty,0) -
-           ROUND(CONVERT(decimal(28,6),s.OriginalCost)
-           * firstReturn.ReceivedQty/s.IssueQty,0)) AS ExpectedOriginalSum,
+           ac06.RoundProratedCost(s.OriginalCost,
+             firstReturn.ReceivedQty+secondReturn.ReceivedQty,s.IssueQty)
+          -ac06.RoundProratedCost(s.OriginalCost,
+             firstReturn.ReceivedQty,s.IssueQty)) AS ExpectedOriginalSum,
        CONVERT(decimal(28,0),firstReturn.RefundBase +
            ISNULL(firstCorrection.DeltaRefund,0) + secondReturn.RefundBase)
            AS ExpectedAdjustedSum,

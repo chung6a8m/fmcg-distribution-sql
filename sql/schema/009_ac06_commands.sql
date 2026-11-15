@@ -69,11 +69,9 @@ BEGIN
       ) adj
       WHERE r.TenantId=@TenantId AND r.SourceId=@SourceId AND
         r.RefundBase+adj.Correction <>
-          CONVERT(decimal(28,0),ROUND(
-            CONVERT(decimal(28,6),@Current) *
-              (priorQty.PrevQty + r.ReceivedQty) / @Qty,0)
-          - ROUND(CONVERT(decimal(28,6),@Current) *
-              priorQty.PrevQty / @Qty,0))
+          ac06.RoundProratedCost(@Current,
+              priorQty.PrevQty+r.ReceivedQty,@Qty)
+          -ac06.RoundProratedCost(@Current,priorQty.PrevQty,@Qty)
     ) THROW 53907,'CUMULATIVE_REFUND_OR_REVALUE_DRIFT',1;
     IF EXISTS(SELECT 1 FROM ac06.ReturnLine r
        WHERE r.TenantId=@TenantId AND r.SourceId=@SourceId AND
@@ -216,8 +214,7 @@ BEGIN
             BEGIN
                 -- Exhausting a location transfers its full residual value.
                 SET @IssueCost=CASE WHEN @Qty=@BalanceQty THEN @BalanceValue
-                     ELSE CONVERT(decimal(28,0),ROUND(
-                       CONVERT(decimal(28,6),@BalanceValue)*@Qty/@BalanceQty,0))
+                     ELSE ac06.RoundProratedCost(@BalanceValue,@Qty,@BalanceQty)
                      END;
                 IF @IssueCost<=0 OR @IssueCost>@BalanceValue
                     THROW 53810,'INVALID_ISSUE_COST',1;
@@ -243,10 +240,10 @@ BEGIN
                  FROM ac06.ReturnLine WHERE TenantId=@TenantId AND SourceId=@SourceId;
                 IF @Qty>@SrcQty-@ReturnedQty THROW 53806,'SOURCE_OVER_RETURN',1;
                 SET @BeforeQty=@ReturnedQty;
-                SET @NewCumulative=CONVERT(decimal(28,0),ROUND(
-                    CONVERT(decimal(28,6),@CurrentCost)*(@BeforeQty+@Qty)/@SrcQty,0));
-                SET @OldCumulative=CONVERT(decimal(28,0),ROUND(
-                    CONVERT(decimal(28,6),@CurrentCost)*@BeforeQty/@SrcQty,0));
+                SET @NewCumulative=ac06.RoundProratedCost(
+                    @CurrentCost,@BeforeQty+@Qty,@SrcQty);
+                SET @OldCumulative=ac06.RoundProratedCost(
+                    @CurrentCost,@BeforeQty,@SrcQty);
                 SET @Refund=@NewCumulative-@OldCumulative;
                 SET @Ordinal=ISNULL((SELECT MAX(ReturnOrdinal)
                   FROM ac06.ReturnLine WHERE TenantId=@TenantId AND SourceId=@SourceId),0)+1;
@@ -325,11 +322,10 @@ BEGIN
               INTO @ReturnId,@ReturnQty,@ReturnBase,@ReturnLocation;
             WHILE @@FETCH_STATUS=0
             BEGIN
-                SET @NewCumulative=CONVERT(decimal(28,0),ROUND(
-                   CONVERT(decimal(28,6),@CostAmount)*
-                   (@BeforeQty+@ReturnQty)/@SrcQty,0));
-                SET @OldCumulative=CONVERT(decimal(28,0),ROUND(
-                   CONVERT(decimal(28,6),@CostAmount)*@BeforeQty/@SrcQty,0));
+                SET @NewCumulative=ac06.RoundProratedCost(
+                   @CostAmount,@BeforeQty+@ReturnQty,@SrcQty);
+                SET @OldCumulative=ac06.RoundProratedCost(
+                   @CostAmount,@BeforeQty,@SrcQty);
                 SET @Desired=@NewCumulative-@OldCumulative;
                 SELECT @AlreadyBooked=@ReturnBase+ISNULL(SUM(DeltaRefund),0)
                  FROM ac06.ReturnCostAdjustment
