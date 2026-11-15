@@ -1,7 +1,7 @@
 # Roadmap SQL-first — Data Model → SQL Simulation → Application
 
 - **Ngày lập:** 2026-11-15
-- **Trạng thái:** ACTIVE — SQL-01 có thiết kế đang review (MODEL_ONLY, NOT_RUN); SQL-02..04 chưa được thực hiện.
+- **Trạng thái:** ACTIVE — SQL-01 đã merge (MODEL_ONLY); SQL-02 có implementation trên PR, SQL engine/evidence chưa xác nhận; SQL-03..04 TODO.
 - **Repository thực hiện:** `chung6a8m/fmcg-distribution-sql`.
 - **Nguồn contract:** `business-v1.0.0` tại `business.lock.json` (source commit `88d70b3be72f34011b49b0de265ad2c43202492f`; tree `business/` = `c9a4164a99ea57e1d5f9bc8711285c6d3705f8e3`).
 - **Mục tiêu:** Có ERD đủ dùng, một mô phỏng SQL chạy được, và kiểm chứng một số bất biến khó nhất trước khi chọn backend/UI/ORM.
@@ -19,8 +19,8 @@
 
 | Chặng | Trạng thái | Mục tiêu / AC | Đầu ra và điều kiện hoàn tất |
 |---|---|---|---|
-| **SQL-01 — Logical ERD** | IN_REVIEW / MODEL_ONLY | Domain → quan hệ, source, snapshot, bất biến, transaction boundaries cho **AC-03** (BR-03/04/07/11/12/13) | ERD slice + mapping từng bước AC-03 + quy tắc khóa/unique/decimal; không còn dữ liệu chủ chốt chưa có chỗ lưu |
-| **SQL-02 — AC-03 SQL executable** | TODO | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
+| **SQL-01 — Logical ERD** | MERGED / MODEL_ONLY | Domain → quan hệ, source, snapshot, bất biến, transaction boundaries cho **AC-03** (BR-03/04/07/11/12/13) | ERD slice + mapping từng bước AC-03 + quy tắc khóa/unique/decimal; không còn dữ liệu chủ chốt chưa có chỗ lưu |
+| **SQL-02 — AC-03 SQL executable** | IMPLEMENTED / NOT_RUN | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
 | **SQL-03A — B credit, atomicity** | TODO | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
 | **SQL-03B — Thu, phân bổ, nộp quỹ** | TODO | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
 | **SQL-03C — Giá vốn và hoàn** | TODO | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
@@ -37,9 +37,9 @@
 - [x] Đề xuất **keys, cardinality, uniqueness/idempotency scope, tenant boundary, quantities/decimal precision, check constraints** và chỗ cần transaction/locking. Không khẳng định SQL constraints một mình bảo đảm toàn bộ authorization.
 - [x] Đặc tả **quyền lượng không chồng nhau** giữa AReservation/BQuota, stock transfer kho→xe (không doanh thu/AR/COGS), A Delivery theo phần giao, B SaleDeliveryReceipt atomic, receipt và handover là effect riêng.
 - [x] Bảng mapping **AC-03 T0, T1_LOAD, T2_REJECT, T3_B20, T4_A25, T5_HANDOVER, T6_RETURN** → command → entities/effects → invariants → oracle columns. Ghi các chỗ chưa rõ là `OPEN QUESTION`, không tự hợp thức hóa.
-- [ ] Review logical model xong mới chốt physical SQL-02; không cần sơ đồ ERD cho các phân hệ ngoài slice.
+- [x] SQL-01 đã review/merge; SQL-02 cụ thể hóa những OQ thành **synthetic test setup** chứ không thành policy sản phẩm.
 
-**Tài liệu thiết kế đang review:** [Logical ERD](../data-model/logical-erd.md), [invariants](../data-model/invariants.md), [transaction boundaries](../data-model/transaction-boundaries.md), [AC-03 mapping](../data-model/ac03-mapping.md). Các OPEN QUESTION được ghi rõ; chưa phê duyệt physical schema và chưa chạy SQL tests.
+**Tài liệu thiết kế SQL-01 đã merge:** [Logical ERD](../data-model/logical-erd.md), [invariants](../data-model/invariants.md), [transaction boundaries](../data-model/transaction-boundaries.md), [AC-03 mapping](../data-model/ac03-mapping.md). Các OPEN QUESTION được ghi rõ; chưa phê duyệt physical schema và chưa chạy SQL tests.
 
 **Exit SQL-01:** tất cả checkpoints AC-03 đã ánh xạ được nguồn, quan hệ, mutation/derived balance và ít nhất một chiến lược enforce bất biến (DB constraint hoặc transaction logic/test); mọi giả định mở được nêu.
 
@@ -111,4 +111,4 @@ Khi SQL-03A/B/C hoàn tất, review một lần:
 
 Không xây app shell/API/UI/auth hay lựa chọn ORM; không xây hạ tầng cloud/CI phức tạp, ledger kế toán hoàn chỉnh, hóa đơn provider thật, offline sync production, tenant migration, cutover Kho-01 thật, PWA, chứng cứ pháp lý, pilot NPP-01. Các mục này thuộc lộ trình ứng dụng/verification riêng; các gate G-STOCK/G-CUT/G-IDEMP/G-LEDGER/G-INV vẫn chưa được miễn hoặc hoàn tất.
 
-**Bước sau khi review/merge SQL-01:** chốt disposition các OPEN QUESTION ảnh hưởng schema, rồi triển khai **SQL-02 / AC-03** trên scratch database có guard và golden assertions. Không cần chọn application tech stack trước.
+**Bước hiện tại:** Review PR SQL-02, chạy `sql/run-tests.ps1` trên SQL Server 2017+ thật với evidence và negative guard test. Chỉ sau PASS có log/actual/tương thích mới đánh dấu SQL-02 hoàn tất và mở SQL-03A/B/C; không cần chọn app stack trước.
