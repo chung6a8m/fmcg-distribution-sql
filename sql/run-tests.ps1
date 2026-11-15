@@ -181,6 +181,7 @@ SELECT CONVERT(varchar(10),compatibility_level) FROM sys.databases WHERE name=DB
     if ($report.CompatibilityLevel -lt 140) {
         throw "SQL compatibility level 140+ required; actual=$version"
     }
+    Write-Host "SQL Server engine: $identity; scratch compatibility level: $version"
 
     foreach ($file in @(
         'schema/001_ac03.sql',
