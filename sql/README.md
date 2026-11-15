@@ -78,7 +78,7 @@ Bộ negative cases có lỗi mong đợi/rollback và kiểm không còn side e
 
 ## SQL-03A — AC-09 B credit, atomic transaction và two-session races
 
-**Trạng thái PR #4:** **CI_SQL_VERIFIED / READY FOR ROUND-3 REVIEW** cho executable code SHA `65819b1a5b4e67f875515f52e3ca89c4d2c992a8` sau fix P1 vòng 2. Hai fresh-scratch run PASS ở [SQL-03A run 43716390894](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390894), SQL-02 regression [run 43716390923](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390923), Business validation [run 43716390903](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390903) đều PASS. Xem [evidence/TestRunIds/negative assertions](../docs/evidence/2026-11-15-sql03a-ac09.md). Commit chỉ sửa docs sau executable SHA này cần đối chiếu CI trên final PR HEAD trước merge. Đây chỉ là executable specification; chưa chứng minh AC-11 đầy đủ, app E2E, kế toán/hóa đơn, local SQL Server 2017 compat140 hoặc Go-Live.
+**Trạng thái PR #4 (đã merge):** **CI_SQL_VERIFIED** cho executable code SHA `65819b1a5b4e67f875515f52e3ca89c4d2c992a8` sau fix P1 vòng 2. Hai fresh-scratch run PASS ở [SQL-03A run 43716390894](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390894), SQL-02 regression [run 43716390923](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390923), Business validation [run 43716390903](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390903) đều PASS. Xem [evidence/TestRunIds/negative assertions](../docs/evidence/2026-11-15-sql03a-ac09.md). Commit chỉ sửa docs sau executable SHA này cần đối chiếu CI trên final PR HEAD trước merge. Đây chỉ là executable specification; chưa chứng minh AC-11 đầy đủ, app E2E, kế toán/hóa đơn, local SQL Server 2017 compat140 hoặc Go-Live.
 
 **Nguồn bất biến:** `../business/reference-data/scenarios/business-cases.json#AC-09`, `../business/reference-data/expected-results/additional-oracles.json#AC-09`; BR-04/11/12/13/14/16; SOP-03. Không sửa business snapshot hoặc copy expected numeric vào test SQL.
 
@@ -112,7 +112,7 @@ Số trong bảng chỉ minh họa hợp đồng đã freeze; **runner lấy exp
 
 ## SQL-03B — AC-21 thu, phân bổ, nộp quỹ; AC-20 tạm ứng độc lập
 
-**Trạng thái:** Đã triển khai trên nhánh PR, **SQL runtime CI_PENDING** cho commit đầu. Chỉ xác nhận PASS sau khi có GitHub Actions run trên đúng HEAD; xem [evidence AC-21/AC-20](../docs/evidence/2026-11-15-sql03b-ac21-ac20.md). Engine SQL Server 2017+ chỉ là prototype, không quyết định database production.
+**Trạng thái:** **CI_SQL_VERIFIED / PR #5 chờ review.** [SQL-03B Actions run 43718593857 — PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43718593857) trên executable/test commit `686ac03fe26794db6ce8788473b286324ce84e2f`, 2 scratch độc lập, AC-21 5×6 và AC-20 5×5, negative/rollback/replay và guarded DROP. [Evidence, TestRunIds và artifact](../docs/evidence/2026-11-15-sql03b-ac21-ac20.md). SQL Server 2019 LocalDB compatibility 150 đã chạy; 2017/compat140 NOT_RUN. Engine vẫn là prototype, chưa quyết định database production.
 
 **Nguồn contract (read-only):** `../business/reference-data/scenarios/business-cases.json#AC-21`, `#AC-20`, `../business/reference-data/expected-results/golden-oracles.json#AC-21` (**5 bước × 6 trường**), `#AC-20` (**5 bước × 5 trường**), BR-13/14/16. Tiền thuộc `VND` trên hai ca này, không giống AC-03 synthetic unitleless. Runner **đọc JSON gốc mỗi run**, không hardcode các expected number.
 
