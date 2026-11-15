@@ -50,6 +50,8 @@ BEGIN
         THROW 51101, 'INVALID_TRANSFER_INPUT', 1;
     SET @From=IIF(@Action='LOAD','MAIN','TRIP');
     SET @To=IIF(@Action='LOAD','TRIP','MAIN');
+    SET @PayloadHash=CONVERT(char(64),HASHBYTES('SHA2_256',
+        CONCAT(@PayloadHash,':TRANSFER:',@Action,':',@AQty,':',@BQty)),2);
     BEGIN TRY
         BEGIN TRANSACTION;
         -- Stable master/right locks make same-scope commands serialize. SQL-03A
@@ -164,6 +166,8 @@ BEGIN
         THROW 51111, 'CASH_EXCEEDS_PAYABLE_FOR_AC03', 1;
     SET @Exposure=@P-@VerifiedCash;
     SET @Source=@CommandId+'-01';
+    SET @PayloadHash=CONVERT(char(64),HASHBYTES('SHA2_256',
+        CONCAT(@PayloadHash,':B:',@Qty,':',@VerifiedCash,':',@CustomerId)),2);
     BEGIN TRY
         BEGIN TRANSACTION;
         SELECT @UnitCost=UnitCost FROM ac03.Sku WITH (UPDLOCK,HOLDLOCK)
@@ -172,23 +176,23 @@ BEGIN
             WHERE TenantId='T01' AND RightId='QB01';
         SELECT 1 FROM ac03.BCreditGrant WITH (UPDLOCK,HOLDLOCK)
             WHERE TenantId='T01' AND GrantId='GB01';
-        SELECT @Available=ISNULL(SUM(DeltaQty),0) FROM ac03.RightPosting
-            WHERE TenantId='T01' AND RightKind='B' AND RightId='QB01' AND LocationId='TRIP';
-        -- Reject B31 for quota specifically, before any sale/cash/stock effect.
-        IF @Available<@Qty
-        BEGIN
-            EXEC ac03.RecordCommand @CommandId,@PayloadHash,'REJECTED',
-                  'B_QUOTA_INSUFFICIENT',@Replay OUTPUT,@OldOutcome OUTPUT;
-            SET @Result=IIF(@Replay=1,'REPLAY_','')+'REJECTED_QUOTA';
-            IF @Replay=1 AND @OldOutcome<>'REJECTED'
-                SET @Result='REPLAY_'+@OldOutcome;
-            COMMIT;
-            RETURN;
-        END;
+        -- Resolve replay/conflict before checking changing quota/grant state.
         EXEC ac03.RecordCommand @CommandId,@PayloadHash,'ACCEPTED',NULL,@Replay OUTPUT,@OldOutcome OUTPUT;
         IF @Replay=1
         BEGIN
-            SET @Result='REPLAY_'+@OldOutcome;
+            SET @Result=CASE WHEN @OldOutcome='REJECTED' THEN 'REPLAY_REJECTED_QUOTA'
+                              ELSE 'REPLAY_ACCEPTED' END;
+            COMMIT;
+            RETURN;
+        END;
+        SELECT @Available=ISNULL(SUM(DeltaQty),0) FROM ac03.RightPosting
+            WHERE TenantId='T01' AND RightKind='B' AND RightId='QB01' AND LocationId='TRIP';
+        -- B31 has otherwise sufficient synthetic cash; reject with no business effects.
+        IF @Available<@Qty
+        BEGIN
+            UPDATE ac03.BusinessEvent SET Outcome='REJECTED',Reason='B_QUOTA_INSUFFICIENT'
+            WHERE TenantId='T01' AND EventId=@CommandId;
+            SET @Result='REJECTED_QUOTA';
             COMMIT;
             RETURN;
         END;
@@ -251,12 +255,21 @@ BEGIN
             @Source varchar(64);
     IF @Qty<=0 THROW 51120, 'INVALID_A_QTY', 1;
     SET @Source=@CommandId+'-01';
+    SET @PayloadHash=CONVERT(char(64),HASHBYTES('SHA2_256',
+        CONCAT(@PayloadHash,':A:',@Qty,':',@CustomerId)),2);
     BEGIN TRY
         BEGIN TRANSACTION;
         SELECT @UnitCost=UnitCost FROM ac03.Sku WITH (UPDLOCK,HOLDLOCK)
             WHERE TenantId='T01' AND SkuId='SKU01';
         SELECT 1 FROM ac03.AReservation WITH (UPDLOCK,HOLDLOCK)
             WHERE TenantId='T01' AND RightId='RA01';
+        EXEC ac03.RecordCommand @CommandId,@PayloadHash,'ACCEPTED',NULL,@Replay OUTPUT,@OldOutcome OUTPUT;
+        IF @Replay=1
+        BEGIN
+            SET @Result='REPLAY_'+@OldOutcome;
+            COMMIT;
+            RETURN;
+        END;
         SELECT @OrderQty=ConfirmedQty,@Price=UnitPriceSnapshot,
                @Terms=TermsDaysSnapshot,@ShipTo=ShipToSnapshot
         FROM ac03.AOrderLine WITH (UPDLOCK,HOLDLOCK)
@@ -272,13 +285,6 @@ BEGIN
         IF (SELECT ISNULL(SUM(DeltaQty),0) FROM ac03.StockPosting
             WHERE TenantId='T01' AND LocationId='TRIP')<@Qty
             THROW 51123, 'A_TRIP_STOCK_INSUFFICIENT', 1;
-        EXEC ac03.RecordCommand @CommandId,@PayloadHash,'ACCEPTED',NULL,@Replay OUTPUT,@OldOutcome OUTPUT;
-        IF @Replay=1
-        BEGIN
-            SET @Result='REPLAY_'+@OldOutcome;
-            COMMIT;
-            RETURN;
-        END;
         INSERT ac03.SourceLine VALUES('T01',@Source,@CommandId,1,'A_DELIVERY');
         INSERT ac03.DeliveryLine(TenantId,SourceLineId,Module,CustomerId,SkuId,AOrderLineId,
                 BSaleLineId,Qty,UnitPriceSnapshot,CostBasisSnapshot,BusinessDate,ShipToSnapshot)
@@ -311,6 +317,7 @@ BEGIN
     SET XACT_ABORT ON;
     DECLARE @Replay bit,@OldOutcome varchar(16);
     IF @Amount<=0 THROW 51130, 'INVALID_HANDOVER_OFFER', 1;
+    SET @PayloadHash=CONVERT(char(64),HASHBYTES('SHA2_256',CONCAT(@PayloadHash,':OFFER:',@Amount)),2);
     BEGIN TRY
         BEGIN TRANSACTION;
         EXEC ac03.RecordCommand @CommandId,@PayloadHash,'ACCEPTED',NULL,@Replay OUTPUT,@OldOutcome OUTPUT;
@@ -345,8 +352,16 @@ BEGIN
     DECLARE @Replay bit,@OldOutcome varchar(16),@Custody decimal(28,6),
             @Offered decimal(28,6),@Accepted decimal(28,6),@OfferedBy varchar(64);
     IF @Amount<=0 THROW 51131, 'INVALID_HANDOVER_ACCEPT', 1;
+    SET @PayloadHash=CONVERT(char(64),HASHBYTES('SHA2_256',
+        CONCAT(@PayloadHash,':ACCEPT:',@HandoverId,':',@Amount,':',@CashierId)),2);
     BEGIN TRY
         BEGIN TRANSACTION;
+        EXEC ac03.RecordCommand @CommandId,@PayloadHash,'ACCEPTED',NULL,@Replay OUTPUT,@OldOutcome OUTPUT;
+        IF @Replay=1
+        BEGIN
+            SET @Result='REPLAY_'+@OldOutcome;
+            COMMIT; RETURN;
+        END;
         SELECT @Offered=OfferedAmount,@OfferedBy=OfferedBy FROM ac03.Handover WITH (UPDLOCK,HOLDLOCK)
             WHERE TenantId='T01' AND HandoverId=@HandoverId;
         SELECT @Accepted=ISNULL(SUM(AcceptedAmount),0) FROM ac03.CashierAcceptance
@@ -357,12 +372,6 @@ BEGIN
             THROW 51132, 'HANDOVER_EXCEEDS_OFFER_OR_CUSTODY', 1;
         IF @CashierId=@OfferedBy OR @CashierId<>'CASHIER'
             THROW 51133, 'CASHIER_ROLE_SEPARATION_REQUIRED', 1;
-        EXEC ac03.RecordCommand @CommandId,@PayloadHash,'ACCEPTED',NULL,@Replay OUTPUT,@OldOutcome OUTPUT;
-        IF @Replay=1
-        BEGIN
-            SET @Result='REPLAY_'+@OldOutcome;
-            COMMIT; RETURN;
-        END;
         INSERT ac03.SourceLine VALUES('T01',@CommandId+'-01',@CommandId,1,'CASHIER_ACCEPT');
         INSERT ac03.CashierAcceptance VALUES('T01',@CommandId,@CommandId+'-01',
                                              @HandoverId,@Amount,@CashierId);
