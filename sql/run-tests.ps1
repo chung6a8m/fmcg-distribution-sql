@@ -7,6 +7,7 @@ param(
     [string]$ScratchDatabase,
     [string]$SqlcmdPath = 'sqlcmd',
     [switch]$KeepDatabase,
+    [switch]$IncludeSql03A,
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'test-results')
 )
 Set-StrictMode -Version Latest
@@ -250,6 +251,10 @@ SELECT CONVERT(varchar(10),compatibility_level) FROM sys.databases WHERE name=DB
         }
         Write-Host "$($actualRow.step) : $(if($diff.Count -eq 0){'PASS'}else{'FAIL'})"
         if ($diff.Count -gt 0) { throw "AC03 oracle mismatch at $($actualRow.step): $($diff -join '; ')" }
+    }
+    if ($IncludeSql03A) {
+        Assert-OwnedMarker $script:DbName $script:TestRunId
+        . (Join-Path $PSScriptRoot 'include-ac09.ps1')
     }
     $report.Status = 'PASS'
     $script:ExitStatus = 0
