@@ -366,8 +366,11 @@ BEGIN
              (Qty<0 OR StockValue<0 OR (Qty=0 AND StockValue<>0)))
              THROW 53902,'LOCATION_NEGATIVE_OR_RESIDUAL_VALUE',1;
         IF @Kind IN ('ISSUE','RETURN','REVALUE')
-            EXEC ac06.AssertLedger @TenantId,
-                 @SourceId=CASE WHEN @Kind='ISSUE' THEN @CommandId ELSE @SourceId END;
+        BEGIN
+            DECLARE @AssertSourceId varchar(40);
+            SET @AssertSourceId=CASE WHEN @Kind='ISSUE' THEN @CommandId ELSE @SourceId END;
+            EXEC ac06.AssertLedger @TenantId,@AssertSourceId;
+        END;
         SET @Result='ACCEPTED';
         COMMIT;
     END TRY
