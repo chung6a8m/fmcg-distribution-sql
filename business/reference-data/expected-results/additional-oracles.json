@@ -1,0 +1,150 @@
+{
+  "metadata": {
+    "kind": "SYNTHETIC_BUSINESS_ORACLES",
+    "status": "MODEL_ONLY",
+    "scope": "Business v1 candidate, not runtime/production verified",
+    "currency": "VND except explicit unitleless cases",
+    "notice": "Tax rates and commercial thresholds are fixture inputs, not real tenant defaults."
+  },
+  "AC-06": {
+    "description": "Source cost two-unit cumulative refund with late correction",
+    "sourceQty": 2,
+    "sourceOriginalCost": 6667,
+    "firstRefund": 3334,
+    "originalSecondRefund": 3333,
+    "sourceAdjustedCost": 6768,
+    "firstRefundAdjustment": 50,
+    "finalSecondRefund": 3384,
+    "expectedOriginalSum": 6667,
+    "expectedAdjustedSum": 6768,
+    "lockedPeriodMutationAllowed": false,
+    "ruleRefs": [
+      "BR-07",
+      "BR-20"
+    ]
+  },
+  "AC-07": {
+    "description": "Net-qualified purchases, gifts returned and waived",
+    "program": {
+      "qualifiedPurchaseThreshold": 10,
+      "giftsPerThreshold": 1
+    },
+    "branchReturned": {
+      "initialPurchases": 20,
+      "initialGiftDelivered": 2,
+      "purchaseReturnAccepted": 11,
+      "giftReturnAccepted": 2,
+      "subsequentPurchase": 11,
+      "expectedNetPurchases": 20,
+      "expectedGiftHeld": 0,
+      "expectedGiftToDeliver": 2
+    },
+    "branchWaived": {
+      "initialPurchases": 20,
+      "initialGiftDelivered": 2,
+      "purchaseReturnAccepted": 11,
+      "giftReturnAccepted": 0,
+      "giftWaiverApproved": 2,
+      "subsequentPurchase": 11,
+      "expectedNetPurchases": 20,
+      "expectedGiftHeld": 2,
+      "expectedGiftToDeliver": 0
+    },
+    "ruleRefs": [
+      "BR-09"
+    ]
+  },
+  "AC-08": {
+    "description": "A order term snapshot per-delivery due date",
+    "sellerTimeZone": "Asia/Ho_Chi_Minh",
+    "confirmedTermsDays": 7,
+    "deliveries": [
+      {
+        "deliveryDate": "2026-11-01",
+        "expectedDueDate": "2026-11-08"
+      },
+      {
+        "deliveryDate": "2026-11-08",
+        "expectedDueDate": "2026-11-15"
+      }
+    ],
+    "laterMasterTermsDays": 14,
+    "newOrder": {
+      "deliveryDate": "2026-11-08",
+      "termsDays": 14,
+      "expectedDueDate": "2026-11-22"
+    },
+    "ruleRefs": [
+      "BR-10"
+    ]
+  },
+  "AC-09": {
+    "description": "B sale verified receipt and reserved CustomerCredit",
+    "cases": [
+      {
+        "caseId": "CASH_60",
+        "P": 100,
+        "verifiedReceiptApplied": 60,
+        "reservedCustomerCreditApplied": 0,
+        "openingGrant": 100,
+        "expectedAR": 40,
+        "expectedGrantRemaining": 60,
+        "expectedCashCustodyDelta": 60
+      },
+      {
+        "caseId": "CASH_100",
+        "P": 100,
+        "verifiedReceiptApplied": 100,
+        "reservedCustomerCreditApplied": 0,
+        "openingGrant": 100,
+        "expectedAR": 0,
+        "expectedGrantRemaining": 100,
+        "expectedCashCustodyDelta": 100
+      },
+      {
+        "caseId": "CASH_60_CREDIT_20",
+        "P": 100,
+        "verifiedReceiptApplied": 60,
+        "reservedCustomerCreditApplied": 20,
+        "openingGrant": 100,
+        "expectedAR": 20,
+        "expectedGrantRemaining": 80,
+        "expectedCashCustodyDelta": 60
+      },
+      {
+        "caseId": "BANK_PENDING",
+        "P": 100,
+        "verifiedReceiptApplied": 0,
+        "reservedCustomerCreditApplied": 0,
+        "openingGrant": 100,
+        "expectedAR": 100,
+        "expectedGrantRemaining": 0,
+        "expectedCashCustodyDelta": 0
+      },
+      {
+        "caseId": "CASH_OVERPAY_120",
+        "P": 100,
+        "verifiedReceiptApplied": 100,
+        "actualCashReceived": 120,
+        "reservedCustomerCreditApplied": 0,
+        "openingGrant": 100,
+        "expectedAR": 0,
+        "expectedGrantRemaining": 100,
+        "expectedNewCustomerCredit": 20,
+        "expectedCashCustodyDelta": 120
+      }
+    ],
+    "concurrencyNegative": {
+      "twoDistinctCommandsExposureEach": 80,
+      "openingGrant": 100,
+      "bothMayCommit": false
+    },
+    "ruleRefs": [
+      "BR-11",
+      "BR-12",
+      "BR-13",
+      "BR-14",
+      "BR-16"
+    ]
+  }
+}

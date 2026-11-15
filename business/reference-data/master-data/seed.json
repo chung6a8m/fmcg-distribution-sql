@@ -1,0 +1,180 @@
+{
+  "metadata": {
+    "datasetId": "BIZ-SEED-01",
+    "status": "SYNTHETIC",
+    "purpose": "Conceptual references; each scenario has independent opening snapshot",
+    "notFor": [
+      "production-import",
+      "real-invoice",
+      "real-tax-default",
+      "tenant-go-live"
+    ]
+  },
+  "tenants": [
+    {
+      "tenantId": "T-DEMO-01",
+      "businessSellerId": "SELLER-DEMO-01",
+      "sellerProfile": "SYNTHETIC_NOT_LEGAL_VERIFIED",
+      "defaultCreditPolicyStatus": "UNSET",
+      "creditLimit": null,
+      "creditTermsDays": null
+    },
+    {
+      "tenantId": "T-DEMO-02",
+      "businessSellerId": "SELLER-DEMO-02",
+      "sellerProfile": "SYNTHETIC_NOT_LEGAL_VERIFIED",
+      "defaultCreditPolicyStatus": "UNSET",
+      "creditLimit": null,
+      "creditTermsDays": null
+    }
+  ],
+  "customers": [
+    {
+      "customerId": "C-01",
+      "tenantId": "T-DEMO-01",
+      "name": "Cửa hàng tổng hợp A (giả lập)",
+      "outletIds": [],
+      "shipToExamples": [
+        {
+          "shipToId": "S-C01",
+          "address": "Địa chỉ giao hàng tổng hợp (giả lập)"
+        }
+      ]
+    },
+    {
+      "customerId": "C-02",
+      "tenantId": "T-DEMO-01",
+      "name": "Đại lý B (giả lập)",
+      "outletIds": [
+        "O-C02-01"
+      ],
+      "shipToExamples": [
+        {
+          "shipToId": "S-C02",
+          "address": "Nơi giao giả lập từ điểm bán"
+        }
+      ]
+    },
+    {
+      "customerId": "C-03",
+      "tenantId": "T-DEMO-02",
+      "name": "Khách hàng tenant thứ hai (giả lập)",
+      "outletIds": [],
+      "shipToExamples": [
+        {
+          "shipToId": "S-C03",
+          "address": "Địa chỉ cách ly dữ liệu (giả lập)"
+        }
+      ]
+    }
+  ],
+  "outlets": [
+    {
+      "outletId": "O-C02-01",
+      "tenantId": "T-DEMO-01",
+      "customerId": "C-02",
+      "effectiveFrom": "2026-11-01",
+      "effectiveTo": null,
+      "name": "Điểm bán C02 (giả lập)"
+    }
+  ],
+  "skus": [
+    {
+      "skuId": "SKU-X",
+      "tenantId": "T-DEMO-01",
+      "baseUom": "EA",
+      "allowedUoms": [
+        {
+          "uom": "EA",
+          "conversionFactor": 1,
+          "unitStep": 1
+        }
+      ],
+      "lotTracking": true,
+      "lotExamples": [
+        {
+          "lotId": "LOT-X-1",
+          "expiresOn": "2027-06-30"
+        }
+      ]
+    },
+    {
+      "skuId": "SKU-P",
+      "tenantId": "T-DEMO-01",
+      "baseUom": "EA",
+      "allowedUoms": [
+        {
+          "uom": "EA",
+          "conversionFactor": 1,
+          "unitStep": 1
+        }
+      ],
+      "lotTracking": false
+    },
+    {
+      "skuId": "SKU-Q",
+      "tenantId": "T-DEMO-01",
+      "baseUom": "EA",
+      "allowedUoms": [
+        {
+          "uom": "EA",
+          "conversionFactor": 1,
+          "unitStep": 1
+        }
+      ],
+      "lotTracking": false
+    }
+  ],
+  "stockLocations": [
+    {
+      "id": "MAIN",
+      "tenantId": "T-DEMO-01",
+      "role": "WAREHOUSE"
+    },
+    {
+      "id": "TRIP-1",
+      "tenantId": "T-DEMO-01",
+      "role": "TRIP_CUSTODY"
+    },
+    {
+      "id": "QUARANTINE",
+      "tenantId": "T-DEMO-01",
+      "role": "RETURN_QUARANTINE"
+    }
+  ],
+  "sampleRoleAssignments": [
+    {
+      "actorId": "EMP-M1",
+      "roles": [
+        "TRIP_WRITER",
+        "DRIVER"
+      ],
+      "vehicleType": "MOTORBIKE"
+    },
+    {
+      "actorId": "EMP-T1",
+      "roles": [
+        "TRIP_WRITER"
+      ],
+      "vehicleType": "TRUCK"
+    },
+    {
+      "actorId": "EMP-T2",
+      "roles": [
+        "DRIVER"
+      ],
+      "vehicleType": "TRUCK"
+    },
+    {
+      "actorId": "EMP-C1",
+      "roles": [
+        "CASHIER"
+      ],
+      "maySelfAcceptCollection": false
+    }
+  ],
+  "currency": "VND",
+  "sellerLocalTimeZone": "Asia/Ho_Chi_Minh",
+  "taxRatesForRealSales": null,
+  "note": "AC-03 uses separate synthetic unitleless opening 100 units/value1000; AC-19 has explicit synthetic tax inputs. Do not combine them."
+}

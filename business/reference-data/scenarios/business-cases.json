@@ -1,0 +1,307 @@
+{
+  "metadata": {
+    "baseline": "BUSINESS_CANDIDATE_V1",
+    "dataStatus": "SYNTHETIC",
+    "runtimeStatus": "NOT_RUN",
+    "oracleStatus": "MODEL_ONLY",
+    "note": "One opening snapshot per case unless explicitly chained; never assume production legal or tax verification."
+  },
+  "cases": [
+    {
+      "id": "AC-01",
+      "scope": "TENANT",
+      "ruleRefs": [
+        "BR-01",
+        "BR-17"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "User A thiếu quyền ở tenant B; B có revocation sau snapshot",
+      "when": "Thử xem/sửa dữ liệu B; phục hồi từ snapshot cũ",
+      "then": "Không truy được row/file/lookup B; revoked vẫn bị chặn",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-02",
+      "scope": "A",
+      "ruleRefs": [
+        "BR-02",
+        "BR-03",
+        "BR-08"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Customer C-01 có 0 Outlet và ShipTo S-C01",
+      "when": "Tạo/confirm/giao A; đổi địa chỉ master sau đó",
+      "then": "Customer vẫn chịu nợ; ShipTo, giá/terms trên chứng từ không bị đổi",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-03",
+      "scope": "MIXED",
+      "ruleRefs": [
+        "BR-03",
+        "BR-04",
+        "BR-07",
+        "BR-11",
+        "BR-12",
+        "BR-13"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "MAIN100 cost1000, A40/B30, grant B100",
+      "when": "Load70; thử B31; B20/thu200; A25; nhận quỹ200; trả hàng còn",
+      "then": "Các hàng/tiền/nợ/cost theo từng bước trong golden oracle AC-03",
+      "oracleRef": "expected-results/golden-oracles.json#AC-03"
+    },
+    {
+      "id": "AC-04",
+      "scope": "STOCK",
+      "ruleRefs": [
+        "BR-05",
+        "BR-21"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Pilot 8 chuyến nhưng Kho-01 còn ghi ngoài wave; có các writer cũ",
+      "when": "Freeze/cutover; thử từng lối ghi cũ và off-wave",
+      "then": "Mọi ghi kho sau cutover chỉ từ nguồn mới; cũ còn ghi được = P0 FAIL",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-05",
+      "scope": "STOCK_RETURN",
+      "ruleRefs": [
+        "BR-06",
+        "BR-20"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "SKU có thùng/lẻ, lot và expiry khác nhau",
+      "when": "Giao FEFO, trả hàng có source, nhận thực, QA release",
+      "then": "UoM đúng; hàng return đi quarantine, chưa có AR reduction lúc mới held",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-06",
+      "scope": "COST",
+      "ruleRefs": [
+        "BR-07",
+        "BR-20"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Nguồn 2 units cost6667, adjusted source6768 trong kỳ sau",
+      "when": "Trả từng phần, adjustment sau kỳ khóa",
+      "then": "3334 +50 +3384=6768; không mutate kỳ khóa; đối soát kế toán",
+      "oracleRef": "expected-results/additional-oracles.json#AC-06"
+    },
+    {
+      "id": "AC-07",
+      "scope": "GIFT_RETURN",
+      "ruleRefs": [
+        "BR-09"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Mua20 nhận2 quà, trả11 hàng và 2 quà hoặc được duyệt waiver",
+      "when": "Mua thêm11, tính lại quà ròng và giftHeld",
+      "then": "Nhánh trả quà giao thêm2; nhánh waiver khách giữ quà không giao thêm",
+      "oracleRef": "expected-results/additional-oracles.json#AC-07"
+    },
+    {
+      "id": "AC-08",
+      "scope": "A_CREDIT_TERMS",
+      "ruleRefs": [
+        "BR-10"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "A Confirm N=7 ngày; giao01/11 và08/11; đổi master N=14",
+      "when": "Tính hạn hai lần giao và đơn mới",
+      "then": "Due 08/11, 15/11; đơn mới giao08/11 due22/11",
+      "oracleRef": "expected-results/additional-oracles.json#AC-08"
+    },
+    {
+      "id": "AC-09",
+      "scope": "B_CREDIT",
+      "ruleRefs": [
+        "BR-11",
+        "BR-12",
+        "BR-13",
+        "BR-15",
+        "BR-16"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "B grant100/saleP100; từng nhánh cash, bank pending, credit",
+      "when": "Bán theo quyền; thử overpay, concurrent2×80, retry",
+      "then": "AR/grant/custody/credit theo AC-09; không partial/double-post",
+      "oracleRef": "expected-results/additional-oracles.json#AC-09"
+    },
+    {
+      "id": "AC-10",
+      "scope": "CASH",
+      "ruleRefs": [
+        "BR-13",
+        "BR-14"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Opening AR140000/custody60000; advance riêng",
+      "when": "Thu/allocate thêm20000; offer+accept handover50000",
+      "then": "AR120000; custody30000 sau accept; quỹ+50000, không trừ AR hai lần",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-11",
+      "scope": "DURABILITY",
+      "ruleRefs": [
+        "BR-16"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Sự kiện C phụ thuộc P, C đến trước, ACK mất hoặc cùng ID khác nội dung",
+      "when": "Ghi nhận, mất kết nối, khởi động lại, gửi lại",
+      "then": "Một hiệu ứng với cùng ID/nội dung; nội dung khác conflict; phụ thuộc pending không mất",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-12",
+      "scope": "OFFLINE_GRANT",
+      "ruleRefs": [
+        "BR-15",
+        "BR-16"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Một writer/trip, quyền hết hạn; có sự kiện đã thực xảy ra và phiếu giấy",
+      "when": "Thay writer, gửi muộn, phục hồi, thử writer thứ hai",
+      "then": "Chặn intent mới; occurred event thành case; source giấy không post trùng",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-13",
+      "scope": "RESTORE",
+      "ruleRefs": [
+        "BR-17",
+        "BR-18"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Đã revoke và đã phát invoice bên ngoài, restore snapshot trước đó",
+      "when": "Thử truy cập, gửi lại invoice sau restore",
+      "then": "Quyền không hồi sinh, invoice không phát lại; thiếu authority ⇒ blocked",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-14",
+      "scope": "INVOICE",
+      "ruleRefs": [
+        "BR-18"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Seller/channel hợp lệ giả định riêng; A giao hai đợt, B mất kênh",
+      "when": "Tạo invoice từ giao, thử timeout/UNKNOWN/no-channel",
+      "then": "Tách mỗi giao; UNKNOWN tra lại; B no-channel blocked; case nếu đã giao thực",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-15",
+      "scope": "ACCOUNTING",
+      "ruleRefs": [
+        "BR-19"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Ba source events, ghi kế toán lặp, một posting có số sai",
+      "when": "Tiếp nhận, posted, đối soát cutoff, sửa lệch",
+      "then": "Mỗi source một effect; RECEIVED≠POSTED≠RECONCILED_OK; diff giữ case",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-16",
+      "scope": "CUTOVER",
+      "ruleRefs": [
+        "BR-21"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Manifest stock/AR/custody/advance/invoice/journal; writer cũ",
+      "when": "Freeze/preview/approve/open mới, nhận event cũ muộn, thử rollback",
+      "then": "Opening cân và ký; writer cũ bị chặn; forward correction sau first effect",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-17",
+      "scope": "VISIT",
+      "ruleRefs": [
+        "BR-22"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Sales thăm Customer đã phân công, không nhận đơn",
+      "when": "Ghi outcome/reason/observation và hoàn tất visit",
+      "then": "Visit hoàn tất không tạo sale0đ/AR/stock giả",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-18",
+      "scope": "PILOT",
+      "ruleRefs": [
+        "BR-05",
+        "BR-23",
+        "BR-24"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Mode đủ gate trước pilot, Kho-01 writer duy nhất",
+      "when": "3A+3B+2Mixed/ngày ≥5 ngày, đo n/N/UX/cases",
+      "then": "Mọi mode đánh giá riêng; có dữ liệu chạy thật; không suy chứng từ mô phỏng là pilot",
+      "oracleRef": null
+    },
+    {
+      "id": "AC-19",
+      "scope": "PRICE_VAT_RETURN",
+      "ruleRefs": [
+        "BR-08",
+        "BR-14",
+        "BR-20"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Giá P/Q + discount10001, VAT 8/10 chỉ là input synthetic",
+      "when": "Tính exclusive/inclusive, trả P 1/3, refund20000",
+      "then": "EXCLUSIVE315133; INCLUSIVE315999; credit69600→49600; không mất residual",
+      "oracleRef": "expected-results/golden-oracles.json#AC-19"
+    },
+    {
+      "id": "AC-20",
+      "scope": "ADVANCE",
+      "ruleRefs": [
+        "BR-13"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "Advance500000, expense300000, return offer200000",
+      "when": "Cashier accept100000 hai lần; retry và over-settle",
+      "then": "Outstanding500k→200k→200k→100k→0; không tác động AR/custody khách",
+      "oracleRef": "expected-results/golden-oracles.json#AC-20"
+    },
+    {
+      "id": "AC-21",
+      "scope": "RECEIPT_CREDIT",
+      "ruleRefs": [
+        "BR-13",
+        "BR-14"
+      ],
+      "status": "NOT_RUN",
+      "evidenceKind": "BUSINESS_SCENARIO_ONLY",
+      "given": "AR140000, cash receipt60000 confirmed",
+      "when": "Allocate20000 và15000; offer50000; cashier accept50000",
+      "then": "AR105000/credit25000/custody10000/fund50000; offer không thay sổ",
+      "oracleRef": "expected-results/golden-oracles.json#AC-21"
+    }
+  ]
+}
