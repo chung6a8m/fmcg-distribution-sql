@@ -24,15 +24,19 @@ Tree SHA phải bằng `businessTreeSha` trong `business.lock.json`. Workflow `.
 
 Xem **[Roadmap triển khai đang hoạt động](docs/roadmap/sql-first.md)**: SQL-01 Logical ERD → SQL-02 AC-03 runnable → SQL-03A/B/C kiểm thử quota/tiền/giá vốn → SQL-04 review & handoff. SQL Server 2017+ được đề xuất **chỉ làm engine thử nghiệm**, chưa phải quyết định DB production hoặc app stack.
 
-## SQL-01 — Logical ERD (đang review)
+## SQL-01 — Logical ERD (đã merge, MODEL_ONLY)
 
 - [ERD và entity/source/snapshot](docs/data-model/logical-erd.md)
 - [Bất biến, khóa logic và precision](docs/data-model/invariants.md)
 - [Transaction boundaries và concurrency contract](docs/data-model/transaction-boundaries.md)
 - [Mapping AC-03 T0..T6 / 13 oracle columns](docs/data-model/ac03-mapping.md)
 
-Đây là **thiết kế logic MODEL_ONLY**, không phải schema T-SQL đã chạy. Những OPEN QUESTION trong ERD/mapping chờ review trước khi chốt SQL-02. `business/` và expected/oracle vẫn read-only.
+SQL-01 là **thiết kế logic MODEL_ONLY** đã merge; không phải verification SQL. Những OPEN QUESTION trong ERD/mapping được xử lý **fixture-only** ở SQL-02, không thành production policy. `business/` và expected/oracle vẫn read-only.
+
+## SQL-02 — AC-03 executable (PR triển khai)
+
+Xem [SQL runner, schema, test và hướng dẫn](sql/README.md). Script T-SQL + PowerShell dựng **scratch database có guard**, thực thi T0..T6, so runtime 7×13 giá trị với golden oracle và kiểm âm/replay/fault, kể cả corrupt per-source cost và wrong ISSUE/right provenance. Đã **CI_SQL_VERIFIED** qua **2 lần chạy** trên Windows/SQL Server 2019 LocalDB (compatibility 150), mỗi lần 7/7 checkpoint và 91/91 cột PASS; guard sai target được xác nhận từ chối. [Evidence và TestRunIds](docs/evidence/2026-11-15-sql02-ac03-ci.md) — [CI run](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43705303178). SQL Server 2017/compat140 và máy local của người dùng chưa kiểm trực tiếp.
 
 ## Trạng thái
 
-Đã cố định **Business Baseline v1.0** và lập roadmap SQL-first. **SQL-01 có bản thiết kế trên PR để review; SQL-02..04 chưa triển khai**, chưa có physical DDL, SQL test run hay source ứng dụng. Chưa chọn backend/UI/ORM hoặc database production; không đánh dấu AC/EV là verified.
+**Business Baseline v1.0** đã freeze; SQL-01 đã merge dưới dạng MODEL_ONLY. SQL-02 [PR #3](https://github.com/chung6a8m/fmcg-distribution-sql/pull/3) **CI_SQL_VERIFIED nhưng chưa review/merge**, SQL-03A/B/C và SQL-04 chưa triển khai. Chưa chọn backend/UI/ORM hoặc database production; SQL PASS không đồng nghĩa AC E2E, EV hay tenant Go-Live được xác nhận.

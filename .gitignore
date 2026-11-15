@@ -1,0 +1,2 @@
+# SQL-02 local execution evidence is generated per run, not a frozen golden source.
+sql/test-results/

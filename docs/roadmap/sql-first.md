@@ -1,7 +1,7 @@
 # Roadmap SQL-first — Data Model → SQL Simulation → Application
 
 - **Ngày lập:** 2026-11-15
-- **Trạng thái:** ACTIVE — SQL-01 có thiết kế đang review (MODEL_ONLY, NOT_RUN); SQL-02..04 chưa được thực hiện.
+- **Trạng thái:** ACTIVE — SQL-01 đã merge (MODEL_ONLY); SQL-02 **CI_SQL_VERIFIED** (2 fresh scratch runs PASS), PR review/merge pending; SQL-03..04 TODO. [Evidence SQL-02](../evidence/2026-11-15-sql02-ac03-ci.md).
 - **Repository thực hiện:** `chung6a8m/fmcg-distribution-sql`.
 - **Nguồn contract:** `business-v1.0.0` tại `business.lock.json` (source commit `88d70b3be72f34011b49b0de265ad2c43202492f`; tree `business/` = `c9a4164a99ea57e1d5f9bc8711285c6d3705f8e3`).
 - **Mục tiêu:** Có ERD đủ dùng, một mô phỏng SQL chạy được, và kiểm chứng một số bất biến khó nhất trước khi chọn backend/UI/ORM.
@@ -19,8 +19,8 @@
 
 | Chặng | Trạng thái | Mục tiêu / AC | Đầu ra và điều kiện hoàn tất |
 |---|---|---|---|
-| **SQL-01 — Logical ERD** | IN_REVIEW / MODEL_ONLY | Domain → quan hệ, source, snapshot, bất biến, transaction boundaries cho **AC-03** (BR-03/04/07/11/12/13) | ERD slice + mapping từng bước AC-03 + quy tắc khóa/unique/decimal; không còn dữ liệu chủ chốt chưa có chỗ lưu |
-| **SQL-02 — AC-03 SQL executable** | TODO | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
+| **SQL-01 — Logical ERD** | MERGED / MODEL_ONLY | Domain → quan hệ, source, snapshot, bất biến, transaction boundaries cho **AC-03** (BR-03/04/07/11/12/13) | ERD slice + mapping từng bước AC-03 + quy tắc khóa/unique/decimal; không còn dữ liệu chủ chốt chưa có chỗ lưu |
+| **SQL-02 — AC-03 SQL executable** | CI_SQL_VERIFIED / PR_IN_REVIEW | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
 | **SQL-03A — B credit, atomicity** | TODO | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
 | **SQL-03B — Thu, phân bổ, nộp quỹ** | TODO | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
 | **SQL-03C — Giá vốn và hoàn** | TODO | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
@@ -37,26 +37,26 @@
 - [x] Đề xuất **keys, cardinality, uniqueness/idempotency scope, tenant boundary, quantities/decimal precision, check constraints** và chỗ cần transaction/locking. Không khẳng định SQL constraints một mình bảo đảm toàn bộ authorization.
 - [x] Đặc tả **quyền lượng không chồng nhau** giữa AReservation/BQuota, stock transfer kho→xe (không doanh thu/AR/COGS), A Delivery theo phần giao, B SaleDeliveryReceipt atomic, receipt và handover là effect riêng.
 - [x] Bảng mapping **AC-03 T0, T1_LOAD, T2_REJECT, T3_B20, T4_A25, T5_HANDOVER, T6_RETURN** → command → entities/effects → invariants → oracle columns. Ghi các chỗ chưa rõ là `OPEN QUESTION`, không tự hợp thức hóa.
-- [ ] Review logical model xong mới chốt physical SQL-02; không cần sơ đồ ERD cho các phân hệ ngoài slice.
+- [x] SQL-01 đã review/merge; SQL-02 cụ thể hóa những OQ thành **synthetic test setup** chứ không thành policy sản phẩm.
 
-**Tài liệu thiết kế đang review:** [Logical ERD](../data-model/logical-erd.md), [invariants](../data-model/invariants.md), [transaction boundaries](../data-model/transaction-boundaries.md), [AC-03 mapping](../data-model/ac03-mapping.md). Các OPEN QUESTION được ghi rõ; chưa phê duyệt physical schema và chưa chạy SQL tests.
+**Tài liệu thiết kế SQL-01 đã merge:** [Logical ERD](../data-model/logical-erd.md), [invariants](../data-model/invariants.md), [transaction boundaries](../data-model/transaction-boundaries.md), [AC-03 mapping](../data-model/ac03-mapping.md). Các OPEN QUESTION được ghi rõ; chưa phê duyệt physical schema và chưa chạy SQL tests.
 
 **Exit SQL-01:** tất cả checkpoints AC-03 đã ánh xạ được nguồn, quan hệ, mutation/derived balance và ít nhất một chiến lược enforce bất biến (DB constraint hoặc transaction logic/test); mọi giả định mở được nêu.
 
 ## 4. SQL-02 — Mô phỏng thực sự trên SQL Server
 
-- [ ] Tạo **minimal physical schema** từ SQL-01; có PK/FK/unique/check/index cần thiết, decimal exact cho tiền/giá vốn/lượng, source identity và scope tenant. Không đưa DDL production hoặc tối ưu premature.
-- [ ] Script dựng database thử nghiệm, reset/seed sạch theo opening snapshot **riêng của AC-03**. `business/reference-data/master-data/seed.json` là tham chiếu khái niệm, **không** phải opening AC-03; giá trị AC-03 có unit `SYNTHETIC_UNITLESS`, không diễn giải là VND.
-- [ ] **Guard database thử nghiệm trước mọi thao tác phá hủy (`DROP`/`TRUNCATE`/reset):** mặc định tạo database scratch riêng cho run; kiểm tra rõ server/instance và database đích, không dựa vào tên database đơn thuần. Nếu tái sử dụng scratch DB, phải xác thực marker sở hữu do harness tạo trong DB; từ chối DB hệ thống, DB tồn tại không có marker đúng, hoặc target không hợp lệ. Guard thất bại → dừng **trước mutation**, lệnh trả exit code khác 0; có negative test trỏ nhầm DB để xác minh từ chối. Không được reset dữ liệu ngoài phạm vi test.
-- [ ] Chạy lần lượt `T0` (MAIN100 @ value1000, A hold40/B quota30), `T1_LOAD` (load70), `T2_REJECT` (B31 fail, state unchanged), `T3_B20` (B20/receipt200/AR_B100), `T4_A25` (A25/AR_A375), `T5_HANDOVER` (cashier accepted200), `T6_RETURN` (xe trả25).
-- [ ] **Assert đủ 13 cột** `step, mainQty, tripQty, soldQty, mainCost, tripCost, cogs, aHold, bQuota, arA, arB, custody, fund` so với `business/reference-data/expected-results/golden-oracles.json#AC-03`. Harness đọc JSON gốc tại runtime hoặc sinh expected từ JSON một cách xác định; **không chép tay một bộ golden mới**.
-- [ ] Khẳng định các bất biến: không âm, bảo toàn qty/value, không double-consume A/B, load không sinh COGS/AR, reject không ghi dở, custody chỉ giảm khi cashier accept, B effects cùng commit/rollback.
-- [ ] Có lệnh chạy **một bước** từ local Windows (ví dụ PowerShell + `sqlcmd`), chỉ yêu cầu SQL Server/`sqlcmd`; reset độc lập để chạy nhiều lần. Kết quả PASS/FAIL rõ ràng; lỗi SQL/test làm command trả exit code khác 0.
-- [ ] Bàn giao README chạy test, phiên bản SQL Server/compatibility level, actual vs expected theo bước, logs, những điều chưa thử. Không tự chấm full E2E.
+- [x] Tạo **minimal physical schema** từ SQL-01; có PK/FK/unique/check/index cần thiết, decimal exact cho tiền/giá vốn/lượng, source identity và scope tenant. Không đưa DDL production hoặc tối ưu premature.
+- [x] Script dựng database thử nghiệm, reset/seed sạch theo opening snapshot **riêng của AC-03**. `business/reference-data/master-data/seed.json` là tham chiếu khái niệm, **không** phải opening AC-03; giá trị AC-03 có unit `SYNTHETIC_UNITLESS`, không diễn giải là VND.
+- [x] **Guard database thử nghiệm trước mọi thao tác phá hủy (`DROP`/`TRUNCATE`/reset):** mặc định tạo database scratch riêng cho run; kiểm tra rõ server/instance và database đích, không dựa vào tên database đơn thuần. Nếu tái sử dụng scratch DB, phải xác thực marker sở hữu do harness tạo trong DB; từ chối DB hệ thống, DB tồn tại không có marker đúng, hoặc target không hợp lệ. Guard thất bại → dừng **trước mutation**, lệnh trả exit code khác 0; có negative test trỏ nhầm DB để xác minh từ chối. Không được reset dữ liệu ngoài phạm vi test.
+- [x] Chạy lần lượt `T0` (MAIN100 @ value1000, A hold40/B quota30), `T1_LOAD` (load70), `T2_REJECT` (B31 fail, state unchanged), `T3_B20` (B20/receipt200/AR_B100), `T4_A25` (A25/AR_A375), `T5_HANDOVER` (cashier accepted200), `T6_RETURN` (xe trả25).
+- [x] **Assert đủ 13 cột** `step, mainQty, tripQty, soldQty, mainCost, tripCost, cogs, aHold, bQuota, arA, arB, custody, fund` so với `business/reference-data/expected-results/golden-oracles.json#AC-03`. Harness đọc JSON gốc tại runtime hoặc sinh expected từ JSON một cách xác định; **không chép tay một bộ golden mới**.
+- [x] Khẳng định các bất biến: không âm, bảo toàn qty/value, không double-consume A/B, load không sinh COGS/AR, reject không ghi dở, custody chỉ giảm khi cashier accept, B effects cùng commit/rollback.
+- [x] Có lệnh chạy **một bước** từ local Windows (ví dụ PowerShell + `sqlcmd`), chỉ yêu cầu SQL Server/`sqlcmd`; reset độc lập để chạy nhiều lần. Kết quả PASS/FAIL rõ ràng; lỗi SQL/test làm command trả exit code khác 0.
+- [x] Bàn giao README chạy test, phiên bản SQL Server/compatibility level, actual vs expected theo bước, logs, những điều chưa thử. Không tự chấm full E2E.
 
-**File dự kiến:** `sql/schema/`, `sql/seed/`, `sql/scenarios/ac03.sql`, `sql/tests/`, `sql/run-tests.ps1`, `sql/README.md`. Tên file con tùy implementation, nhưng phải có một entrypoint rõ.
+**Đã triển khai:** `sql/schema/`, `sql/seed/`, `sql/scenarios/ac03.sql`, `sql/tests/`, `sql/run-tests.ps1`, `sql/README.md` và CI verification. Entrypoint duy nhất `sql/run-tests.ps1` (mỗi run tạo scratch mới).
 
-**Exit SQL-02 (gate sang SQL-03):** schema dựng từ scratch DB sạch, AC-03 chạy lặp lại PASS, T2 không có tác động, all 13 oracle fields từng bước khớp; kiểm thử target DB sai/không có marker phải FAIL trước mutation với exit code khác 0. Kết quả có khả năng kiểm tra lại. Oracle AC-03 đánh dấu `MODEL_ONLY` ở nguồn ngay cả khi SQL harness pass; bằng chứng SQL được lưu riêng.
+**Exit SQL-02 (gate sang SQL-03):** schema dựng từ scratch DB sạch, AC-03 chạy lặp lại PASS, T2 không có tác động, all 13 oracle fields từng bước khớp; kiểm thử target DB sai/không có marker phải FAIL trước mutation với exit code khác 0. **Technical evidence đã đạt trên Windows SQL Server 2019 LocalDB compat150**; [run và artifact](../evidence/2026-11-15-sql02-ac03-ci.md). **Review/merge PR #3 vẫn pending**. Oracle AC-03 đánh dấu `MODEL_ONLY` ở nguồn; SQL CI PASS không nâng AC E2E/EV/go-live.
 
 ## 5. SQL-03 — Các ca khó cần ưu tiên
 
@@ -111,4 +111,4 @@ Khi SQL-03A/B/C hoàn tất, review một lần:
 
 Không xây app shell/API/UI/auth hay lựa chọn ORM; không xây hạ tầng cloud/CI phức tạp, ledger kế toán hoàn chỉnh, hóa đơn provider thật, offline sync production, tenant migration, cutover Kho-01 thật, PWA, chứng cứ pháp lý, pilot NPP-01. Các mục này thuộc lộ trình ứng dụng/verification riêng; các gate G-STOCK/G-CUT/G-IDEMP/G-LEDGER/G-INV vẫn chưa được miễn hoặc hoàn tất.
 
-**Bước sau khi review/merge SQL-01:** chốt disposition các OPEN QUESTION ảnh hưởng schema, rồi triển khai **SQL-02 / AC-03** trên scratch database có guard và golden assertions. Không cần chọn application tech stack trước.
+**Bước hiện tại:** SQL-02 đã PASS hai run độc lập trên **SQL Server 2019 LocalDB / compatibility 150**, có [guard test, logs/actual và TestRunIds](../evidence/2026-11-15-sql02-ac03-ci.md). Tiếp theo review findings PR #3 và merge khi đạt; SQL Server 2017/compat140 chưa xác nhận riêng. Sau đó mở SQL-03A/B/C; không cần chọn app stack trước.

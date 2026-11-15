@@ -1,0 +1,53 @@
+name: SQL-02 AC-03 SQL Server scratch verification
+
+on:
+  pull_request:
+    paths:
+      - 'sql/**'
+      - '.github/workflows/sql-ac03.yml'
+      - 'business/reference-data/expected-results/golden-oracles.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ac03-scratch:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start SQL Server Express LocalDB
+        shell: pwsh
+        run: |
+          Get-Command sqlcmd -ErrorAction Stop | Format-List
+          & sqllocaldb info
+          & sqllocaldb start MSSQLLocalDB
+          if ($LASTEXITCODE -ne 0) { throw "LocalDB startup failed" }
+      - name: Verify unsafe database target is rejected before mutation
+        shell: pwsh
+        run: |
+          $guardLog = & pwsh -NoProfile -NonInteractive -File .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -ScratchDatabase master -OutputDirectory sql/test-results/guard-negative 2>&1 | Out-String
+          $guardExit = $LASTEXITCODE
+          if ($guardExit -eq 0 -or $guardLog -notmatch 'UNSAFE_TARGET') {
+            throw "GUARD_TARGET_TEST_FAILED: exit=$guardExit; output=$guardLog"
+          }
+          Write-Host "MASTER_TARGET_DENIED_AS_EXPECTED (exit=$guardExit)"
+          exit 0  # The child process exit 1 is expected and has been asserted above.
+      - name: Execute SQL-02 twice on independent fresh scratch databases
+        shell: pwsh
+        run: |
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB'
+          if ($LASTEXITCODE -ne 0) { throw "SQL-02 AC-03 FIRST RUN FAIL" }
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB'
+          if ($LASTEXITCODE -ne 0) { throw "SQL-02 AC-03 SECOND RUN FAIL" }
+      - name: Upload SQL scratch test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ac03-sql02-evidence
+          path: |
+            sql/test-results/*.json
+            sql/test-results/guard-negative/*.json
+          if-no-files-found: warn
+          retention-days: 7
