@@ -13,12 +13,12 @@ Các source cần có định danh bền trong fixture SQL-02:
 1. Opening source cho StockLocation MAIN, SKU hợp lệ trong tenant và qty/value +100/+1.000.
 2. AOrder Confirm source: AOrderLine qty40, price snapshot15 và AReservation grant40 tại MAIN; Customer chịu nợ và ShipTo snapshot phải xác định trong fixture, không lấy địa chỉ master hiện tại khi giao.
 3. BQuota grant source30 theo Trip/SKU, đặt quyền B tại MAIN; BCreditGrant source100 theo scope được chấp nhận cho simulation, không thay quyền hàng.
-4. Manifest source load A40+B30 cùng giá vốn từ MAIN sang TRIP.
+4. Manifest command có **2 ManifestLine/sourceLineId khác nhau**, A40/value400 và B30/value300. Mỗi line tạo đúng 1 StockMovement transfer (2 legs); hai movements và rights cùng commit trong một transaction.
 5. B31 command source bị reject; giữ identity/reason, không post effect. Không biến rejected attempt thành B sale.
 6. B20 SaleDeliveryReceipt source: qty20, P300, cash receipt confirmed200 và allocation200; B grant consumed100.
 7. A Delivery source: qty25, P375, chưa thu; dùng giá/terms từ AOrder Confirm, AR riêng.
 8. Cash handover source OFFER và source Cashier ACCEPT200; OFFER không có ledger; ACCEPT có custody/fund effects.
-9. Trip unload/return stock source: A15+B10 trở về MAIN, B quota release10, A held15 còn hiệu lực. Không là Customer Return.
+9. Trip unload command có **2 TripUnloadLine/sourceLineId riêng**, tham chiếu lần lượt ManifestLine A và B gốc: A15/value150, B10/value100 về MAIN. Mỗi line tạo đúng 1 movement 2 legs trong cùng transaction; B quota release10, A held15 còn hiệu lực. Không là Customer Return.
 
 **Nguồn và effect khác nhau:** ví dụ B20 có một command envelope/durable business event, nhiều SOURCE_LINE hoặc effect roles (stock leg, right consumption, cost, receivable, receipt, allocation, custody, grant). Mỗi effect có ID riêng nhưng cùng trace về B20; chỉ ghi một lần khi retry.
 
@@ -27,12 +27,14 @@ Các source cần có định danh bền trong fixture SQL-02:
 | Checkpoint | Command, source và mutation được phép | Assert/postcondition theo oracle | Negative / không được suy |
 |---|---|---|---|
 | **T0** | Opening MAIN +100/value+1.000; ConfirmA +40 right position MAIN; GrantBQuota +30 right position MAIN; GrantBCredit +100. Tạo AOrder snapshot, Customer/ShipTo context | mainQty100, mainCost1000; tripQty/tripCost/soldQty/cogs=0; aHold40, bQuota30; arA/arB/custody/fund=0 | A Confirm và quyền cấp **không** tạo stock issue ra khách, AR, COGS hay sale |
-| **T1_LOAD** | Manifest 2 lines A40/cost400 và B30/cost300; một StockMovement transfer có 2 stock posting legs MAIN−70/−700, TRIP+70/+700; right placements MAIN−40 A/−30 B, TRIP+40 A/+30 B | mainQty30/tripQty70; mainCost300/tripCost700; soldQty0/cogs0; aHold40/bQuota30; AR/custody/fund0 | Transfer không là revenue, sale, receipt hay AR; không giữ quyền song song ở MAIN và TRIP |
+| **T1_LOAD** | Manifest 2 source lines, **2 StockMovements / 4 posting legs**: A40/value400 (MAIN−40/−400, TRIP+40/+400) và B30/value300 (MAIN−30/−300, TRIP+30/+300), atomic cùng A/B right postings MAIN−40/−30, TRIP+40/+30; tổng MAIN−70/TRIP+70 | mainQty30/tripQty70; mainCost300/tripCost700; soldQty0/cogs0; aHold40/bQuota30; AR/custody/fund0 | Transfer không là revenue, sale, receipt hay AR; không giữ quyền song song ở MAIN và TRIP |
 | **T2_REJECT** | Try B31, nhưng B quota available30, **reject trước ledger**, optional audit source/command result | **Tất cả 12 giá trị số** phải bằng T1_LOAD; step là T2_REJECT | Không có bán31, không âm B, không partial stock/AR/receipt/COGS/grant/custody; không ăn A40 |
 | **T3_B20** | B SaleDeliveryReceipt qty20 @ price15 → P300; StockMovement issue và TRIP stock−20/value−200, right B−20, COGS+200; AR open item gross300, receipt cash200 confirmed + allocation200; custody+200; credit grant consumption100 | tripQty50, tripCost500; soldQty20/cogs200; bQuota10; arB100/custody200; mainQty30/mainCost300; aHold40, arA/fund0 | R=200 chỉ vì verified cash; AR_B=300−200=100. Không trừ B grant300 hay trừ cả “held+AR” |
 | **T4_A25** | DeliverA qty25 @ confirmed price15 → P375; StockMovement issue và TRIP stock−25/value−250; A right−25; COGS+250; AR_A item gross375 (dueDate per approved terms snapshot) | tripQty25/tripCost250; soldQty45/cogs450; aHold15, bQuota10; arA375/arB100; custody200/fund0 | Không consume B quota, không lấy terms mới từ Customer, không ghi receipt chưa thu |
 | **T5_HANDOVER** | OFFER tiền nộp (không effect), cashier ACCEPT200 có source; custody−200 và FUND+200 cùng transaction | custody0/fund200; mọi số stock, soldQty, cogs, holds, quota, AR không đổi so T4 | OFFER chưa đủ; handover không làm AR_B giảm100 lần nữa |
-| **T6_RETURN** | Trip unload stock A15+B10 (25 units/value250) về MAIN: một StockMovement unload có 2 stock posting legs MAIN+25/+250, TRIP−25/−250; A placement TRIP−15/MAIN+15; B placement TRIP−10 bằng RELEASE source; BQuota remaining0 | mainQty55/mainCost550; tripQty/tripCost0; soldQty45/cogs450; aHold15/bQuota0; AR_A375/AR_B100; custody0/fund200 | Không phải khách trả hàng, không reverse COGS/AR; không release A15 và không để B10 là quota active |
+| **T6_RETURN** | TripUnloadLine A15/value150 và B10/value100 theo 2 manifest lines gốc → **2 movements / 4 posting legs**: A (TRIP−15/−150, MAIN+15/+150), B (TRIP−10/−100, MAIN+10/+100) trong một transaction; A right TRIP−15/MAIN+15, B right TRIP−10 RELEASE; tổng MAIN+25/TRIP−25; BQuota0 | mainQty55/mainCost550; tripQty/tripCost0; soldQty45/cogs450; aHold15/bQuota0; AR_A375/AR_B100; custody0/fund200 | Không phải khách trả hàng, không reverse COGS/AR; không release A15 và không để B10 là quota active |
+
+**Per-source check T1/T6:** không chỉ so tổng 70/25. Với từng ManifestLine/TripUnloadLine phải có 1 movement, 2 stock legs đúng SKU/trip/location/qty/value và pool A/B; right postings phải tham chiếu đúng reservation/quota của line đó. Assert riêng tổng movement và atomic rollback nếu lỗi giữa hai lines.
 
 **Điểm T2:** Để test riêng ràng buộc BQuota (31 > 30), SQL-02 cần chuẩn bị các input thanh toán/quyền khác của attempted sale sao cho **không** bị lỗi grant/receipt trước; baseline không định nghĩa chi tiết B31 payment. Ghi rõ input bổ sung là **synthetic test setup**, không sửa oracle hay tự kết luận B31 đã từng bán/giao thực.
 
@@ -61,15 +63,17 @@ Không tính **aHold** hoặc **bQuota** bằng cách trừ chúng khỏi physic
 - **Stock:** mainQty + tripQty + soldQty = 100, bởi opening100 và không có inbound/outbound khác trong AC-03. T1 và T6 là internal transfer, không đổi tổng hàng còn + đã giao.
 - **Value:** mainCost + tripCost + cogs = 1.000, vì opening value1.000 và cost issue200+250 theo cùng cost basis; không có adjustment khác.
 - **Rights at location:** T1 TRIP có A40+B30=70 ≤ tripQty70; T3 A40+B10=50; T4/T5 A15+B10=25; T6 MAIN có A15+B0 ≤ mainQty55, TRIP0.
+- **Per-source lineage:** T1 movement A40/value400 và B30/value300, mỗi movement 2 legs; T6 unload A15/value150 và B10/value100 theo manifest gốc, mỗi movement 2 legs; đúng rightId/pool tại từng source line. Không coi tổng qty/value cân là bằng chứng đủ cho hai pool.
+- **Customer integrity:** RECEIPT_ALLOCATIONS và AR_OPEN_ITEM khớp `(tenantId, customerId)` với RECEIPT; DELIVERY/LINE, AR phải cùng Customer chịu nợ với A_ORDER/B_SALE nguồn. Wrong-Customer same-tenant phải reject.
 - **AR and cash:** B payable300 = AR B100 + confirmed receipt applied200. A payable375 = AR A375 + applied0. Cash receipt200 = custody200 + fund0 trước handover, = custody0+fund200 sau accept.
 - **Credit:** B grant initial100 = consumed exposure100 + remaining0 tại T3 (không có release nguồn khác). Grant khác BQuota.
 - **T2:** trạng thái nghiệp vụ và tất cả 12 numeric fields bằng T1; rejected command có thể được audit mà không tạo ledger effect.
 
 ## 4. Hợp đồng đầu vào/đầu ra cho SQL-02
 
-**Input độc lập:** một schema/DB scratch có guard; fixture opening và grants T0 rõ tenant/trip/sku/customer/ship-to, snapshots A/B đủ tính toán; oracle đọc gốc đúng thứ tự 7 checkpoints. Seed.json **chỉ** tham khảo danh mục, không phải opening AC-03. Oracle **không** thay khi bổ sung trường source/actor/terms synthetic cần để vận hành command.
+**Input độc lập:** một schema/DB scratch có guard; fixture opening và grants T0 rõ tenant/trip/sku/customer/ship-to, snapshots A/B đủ tính toán; `sourceLineId` unique trong tenant, `lineOrdinal` chỉ local event; oracle đọc gốc đúng thứ tự 7 checkpoints. Seed.json **chỉ** tham khảo danh mục, không phải opening AC-03. Oracle **không** thay khi bổ sung trường source/actor/terms synthetic cần để vận hành command.
 
-**Actual:** snapshot query sau **mỗi** checkpoint lấy đúng 13 tên cột trên; giữ số decimal chính xác (không FLOAT), so numeric theo giá trị, so step theo string; hiển thị expected/actual/diff; fail → exit code khác0. Thêm assert effect lineage/negative riêng, không chỉ khớp tổng cuối.
+**Actual:** snapshot query sau **mỗi** checkpoint lấy đúng 13 tên cột trên; giữ số decimal chính xác (không FLOAT), so numeric theo giá trị, so step theo string; hiển thị expected/actual/diff; fail → exit code khác0. Thêm assert effect lineage/negative riêng (2 movements × 2 legs cho T1/T6, không cross-Customer, không collision giữa hai events cùng lineOrdinal), không chỉ khớp tổng cuối.
 
 **Kết quả SQL-02 phải lưu:** command một bước trên Windows, SQL Server version/compatibility, DB guard test (refuse unsafe/reset foreign DB), SQL tests thật, logs + testRunId, source ref, trạng thái PASS/FAIL/BLOCKED/NOT_RUN. SQL PASS tại local **không** sửa trạng thái MODEL_ONLY trong business oracle và không chứng minh E2E/app/go-live.
 
@@ -83,4 +87,4 @@ Không tính **aHold** hoặc **bQuota** bằng cách trừ chúng khỏi physic
 | OQ-04 | A hold15 còn ở T6 dù Trip stock0 | Right placement chuyển về MAIN và giữ AReservation; cần quyết định reassignment/Trip close status sau đó |
 | OQ-05 | Currency/rounding/lot/expiry/invoice không đầy đủ | Với AC-03 chỉ dùng decimal exact, baseQty fixed/giá fixed, synthetic invoiceEligible=false; không chứng minh VAT, legal seller, FEFO |
 
-**Review gate SQL-01:** từng checkpoint truy được command→nguồn→các effect→formula của 13 cột→ít nhất một ràng buộc enforce. OQ có chủ sở hữu/disposition trước khi SQL-02 chốt schema; không suy OQ là quyết định nghiệp vụ mới.
+**Review gate SQL-01:** từng checkpoint truy được command→nguồn→các effect→formula của 13 cột→ít nhất một ràng buộc enforce; các nguồn cùng tenant/Customer có identity rõ và transfer truy được từng pool A/B. OQ có chủ sở hữu/disposition trước khi SQL-02 chốt schema; không suy OQ là quyết định nghiệp vụ mới.
