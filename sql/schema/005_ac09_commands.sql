@@ -143,9 +143,10 @@ BEGIN
         WAITFOR DELAY '00:00:00.100';
     END;
     BEGIN TRY
+        DECLARE @RaceCommandId varchar(40)=CONCAT(@RaceId,'_',@AttemptId);
         EXEC ac09.ExecuteSale
             @PoolId=@PoolId,
-            @CommandId=CONCAT(@RaceId,'_',@AttemptId),
+            @CommandId=@RaceCommandId,
             @Qty=@Qty,@UnitPrice=@Price,@CashApplied=@Cash,
             @ReservedCreditApplied=0,@ActualCashReceived=@Cash,
             @PendingBankEvidence=0,@HoldLock=1,@Result=@Result OUTPUT;
