@@ -1,7 +1,7 @@
 # Roadmap SQL-first — Data Model → SQL Simulation → Application
 
 - **Ngày lập:** 2026-11-15
-- **Trạng thái:** ACTIVE — SQL-01 đã merge (MODEL_ONLY); SQL-02 **CI_SQL_VERIFIED** (2 fresh scratch runs PASS), PR review/merge pending; SQL-03..04 TODO. [Evidence SQL-02](../evidence/2026-11-15-sql02-ac03-ci.md).
+- **Trạng thái:** ACTIVE — SQL-01 đã merge (MODEL_ONLY); SQL-02 **MERGED / CI_SQL_VERIFIED** (2 fresh scratch runs PASS); SQL-03A **CI_SQL_VERIFIED / PR_IN_REVIEW** (PR #4; two independent CI scratch runs PASS); SQL-03B/C và SQL-04 TODO. [Evidence SQL-02](../evidence/2026-11-15-sql02-ac03-ci.md).
 - **Repository thực hiện:** `chung6a8m/fmcg-distribution-sql`.
 - **Nguồn contract:** `business-v1.0.0` tại `business.lock.json` (source commit `88d70b3be72f34011b49b0de265ad2c43202492f`; tree `business/` = `c9a4164a99ea57e1d5f9bc8711285c6d3705f8e3`).
 - **Mục tiêu:** Có ERD đủ dùng, một mô phỏng SQL chạy được, và kiểm chứng một số bất biến khó nhất trước khi chọn backend/UI/ORM.
@@ -20,8 +20,8 @@
 | Chặng | Trạng thái | Mục tiêu / AC | Đầu ra và điều kiện hoàn tất |
 |---|---|---|---|
 | **SQL-01 — Logical ERD** | MERGED / MODEL_ONLY | Domain → quan hệ, source, snapshot, bất biến, transaction boundaries cho **AC-03** (BR-03/04/07/11/12/13) | ERD slice + mapping từng bước AC-03 + quy tắc khóa/unique/decimal; không còn dữ liệu chủ chốt chưa có chỗ lưu |
-| **SQL-02 — AC-03 SQL executable** | CI_SQL_VERIFIED / PR_IN_REVIEW | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
-| **SQL-03A — B credit, atomicity** | TODO | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
+| **SQL-02 — AC-03 SQL executable** | MERGED / CI_SQL_VERIFIED | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
+| **SQL-03A — B credit, atomicity** | CI_SQL_VERIFIED / PR_IN_REVIEW | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
 | **SQL-03B — Thu, phân bổ, nộp quỹ** | TODO | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
 | **SQL-03C — Giá vốn và hoàn** | TODO | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
 | **SQL-04 — Review và handoff cho app** | TODO | Đánh giá mô hình sau các SQL scenarios | Review constraints/concurrency, ghi gap và quyết định còn mở; xác định vertical slice app đầu tiên và tiêu chí kiểm thử; **sau đó mới chốt app stack** |
@@ -56,7 +56,7 @@
 
 **Đã triển khai:** `sql/schema/`, `sql/seed/`, `sql/scenarios/ac03.sql`, `sql/tests/`, `sql/run-tests.ps1`, `sql/README.md` và CI verification. Entrypoint duy nhất `sql/run-tests.ps1` (mỗi run tạo scratch mới).
 
-**Exit SQL-02 (gate sang SQL-03):** schema dựng từ scratch DB sạch, AC-03 chạy lặp lại PASS, T2 không có tác động, all 13 oracle fields từng bước khớp; kiểm thử target DB sai/không có marker phải FAIL trước mutation với exit code khác 0. **Technical evidence đã đạt trên Windows SQL Server 2019 LocalDB compat150**; [run và artifact](../evidence/2026-11-15-sql02-ac03-ci.md). **Review/merge PR #3 vẫn pending**. Oracle AC-03 đánh dấu `MODEL_ONLY` ở nguồn; SQL CI PASS không nâng AC E2E/EV/go-live.
+**Exit SQL-02 (gate sang SQL-03):** schema dựng từ scratch DB sạch, AC-03 chạy lặp lại PASS, T2 không có tác động, all 13 oracle fields từng bước khớp; kiểm thử target DB sai/không có marker phải FAIL trước mutation với exit code khác 0. **Technical evidence đã đạt trên Windows SQL Server 2019 LocalDB compat150**; [run và artifact](../evidence/2026-11-15-sql02-ac03-ci.md). **PR #3 đã merge**; chỉ các kết quả được nêu trong evidence mới là verified. Oracle AC-03 đánh dấu `MODEL_ONLY` ở nguồn; SQL CI PASS không nâng AC E2E/EV/go-live.
 
 ## 5. SQL-03 — Các ca khó cần ưu tiên
 
@@ -69,6 +69,8 @@
 - **Concurrency thật — BQuota (BR-04/11/12, SOP-03):** 2 SQL sessions, hai command ID khác nhau cùng tranh BQuota100, mỗi bên bán qty80; bố trí credit grant đủ rộng (hoặc verified receipt đủ để exposure không là giới hạn) để **chỉ BQuota là giới hạn tranh chấp**. Không cả hai commit.
 - Sau mỗi ca, xác minh persisted stock/BQuota/grant không âm hoặc vượt quyền, chỉ có effect của các command đã commit, không có partial effect/duplicate; thử commit/rollback bằng **2 kết nối đồng thời thật**, không thay bằng các lần chạy tuần tự. Không đổi oracle AC-09 gốc.
 - Gate: assertions, negative tests, **evidence riêng cho cả hai ca grant và quota**, xác định rõ locking/serialization mechanism.
+
+**SQL-03A triển khai ở PR #4:** `sql/schema/004_ac09.sql`, `005_ac09_commands.sql`, `sql/include-ac09.ps1`, `sql/tests/ac09-*.sql` và `.github/workflows/sql-ac09.yml`. Runner `sql/run-tests.ps1 -IncludeSql03A` giữ guard của SQL-02; đọc `additional-oracles.json#AC-09` tại runtime, so 5 nhánh, retry/conflict/fault và hai race hai kết nối thật có barrier/SPID/trace. **Chưa nâng cấp AC-11 dependency recovery** (sự kiện C đến trước P, ACK mất và restart); không suy diễn app E2E hay owner acceptance từ SQL CI. Xem [hướng dẫn](../../sql/README.md) và [evidence SQL-03A](../evidence/2026-11-15-sql03a-ac09.md).
 
 ### SQL-03B — AC-21 (AC-20 tùy chọn)
 

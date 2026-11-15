@@ -1,0 +1,40 @@
+name: SQL-03A AC-09 credit, rollback and two-session races
+
+on:
+  pull_request:
+    paths:
+      - 'sql/**'
+      - '.github/workflows/sql-ac09.yml'
+      - 'business/reference-data/expected-results/additional-oracles.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ac09-scratch:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start SQL Server LocalDB
+        shell: pwsh
+        run: |
+          Get-Command sqlcmd -ErrorAction Stop | Out-Null
+          & sqllocaldb start MSSQLLocalDB
+          if ($LASTEXITCODE -ne 0) { throw 'SQL LocalDB start failed' }
+      - name: Execute full AC-03 + AC-09 twice with independent scratch DBs
+        shell: pwsh
+        run: |
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03A
+          if ($LASTEXITCODE -ne 0) { throw 'SQL-03A run 1 failed' }
+          .\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03A
+          if ($LASTEXITCODE -ne 0) { throw 'SQL-03A run 2 failed' }
+      - name: Upload SQL-03A JSON evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ac09-sql03a-evidence
+          path: sql/test-results/*.json
+          if-no-files-found: warn
+          retention-days: 7

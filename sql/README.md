@@ -1,6 +1,6 @@
 # SQL-02 — AC-03 executable SQL (SQL Server 2017+)
 
-**Trạng thái:** **CI_SQL_VERIFIED** trên Windows / SQL Server 2019 LocalDB (compat 150), **2 lần fresh-scratch PASS**; PR #3 vẫn pending review/merge. [Evidence/actual và TestRunIds](../docs/evidence/2026-11-15-sql02-ac03-ci.md), [CI PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43705303178). Đây là SQL executable specification, **không** phải app E2E hoặc Go-Live, không dùng để bật B_ONLINE production.
+**Trạng thái:** **CI_SQL_VERIFIED** trên Windows / SQL Server 2019 LocalDB (compat 150), **2 lần fresh-scratch PASS**; PR #3 đã merge. [Evidence/actual và TestRunIds](../docs/evidence/2026-11-15-sql02-ac03-ci.md), [CI PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43705303178). Đây là SQL executable specification, **không** phải app E2E hoặc Go-Live, không dùng để bật B_ONLINE production.
 
 ## Phạm vi và nguồn
 
@@ -72,3 +72,38 @@ Bộ negative cases có lỗi mong đợi/rollback và kiểm không còn side e
 **Đã xác minh thực tế:** `sqlcmd` chạy SQL Server **2019 LocalDB v15.0.4382.1 / compatibility 150**, 2 lần trên 2 scratch DB khác nhau, mỗi lần 7/7 checkpoints và 91/91 field comparisons PASS (tổng 182 phép so), negative/fault tests PASS, gồm 6 probes mới N-13c/d và N-14a/b/c/d, cleanup guard PASS. CI cũng thực thi lệnh chống target `master`, nhận **exit 1/UNSAFE_TARGET/NO_DATABASE_CREATED**. Artifact chứa JSON expected/actual/diff và môi trường từng run, kể cả negative guard có status FAIL **được mong đợi**. [Xem evidence](../docs/evidence/2026-11-15-sql02-ac03-ci.md).
 
 **Chưa kiểm chứng:** máy Windows của người dùng, SQL Server 2017 compatibility 140, two-session concurrency (SQL-03A), VAT/rounding ngoài AC-03, tài khoản/authorization ở app, provider invoice/accounting, offline recovery, cutover, production tenancy, Go-Live. Bất kỳ thay đổi semantic nào phải thông qua Business Baseline canonical; `business/` và `business.lock.json` không bị sửa.
+
+
+---
+
+## SQL-03A — AC-09 B credit, atomic transaction và two-session races
+
+**Trạng thái PR #4:** **CI_SQL_VERIFIED / READY FOR ROUND-3 REVIEW** cho executable code SHA `65819b1a5b4e67f875515f52e3ca89c4d2c992a8` sau fix P1 vòng 2. Hai fresh-scratch run PASS ở [SQL-03A run 43716390894](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390894), SQL-02 regression [run 43716390923](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390923), Business validation [run 43716390903](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43716390903) đều PASS. Xem [evidence/TestRunIds/negative assertions](../docs/evidence/2026-11-15-sql03a-ac09.md). Commit chỉ sửa docs sau executable SHA này cần đối chiếu CI trên final PR HEAD trước merge. Đây chỉ là executable specification; chưa chứng minh AC-11 đầy đủ, app E2E, kế toán/hóa đơn, local SQL Server 2017 compat140 hoặc Go-Live.
+
+**Nguồn bất biến:** `../business/reference-data/scenarios/business-cases.json#AC-09`, `../business/reference-data/expected-results/additional-oracles.json#AC-09`; BR-04/11/12/13/14/16; SOP-03. Không sửa business snapshot hoặc copy expected numeric vào test SQL.
+
+Chạy trên Windows/LocalDB/SQL Server 2017+ (có `sqlcmd`, Windows authentication và quyền tạo/xóa DB scratch):
+
+```powershell
+.\sql\run-tests.ps1 -ServerInstance '(localdb)\MSSQLLocalDB' -IncludeSql03A
+# Khi cần tự kiểm ledger (database được giữ lại và phải xử lý thủ công):
+.\sql\run-tests.ps1 -ServerInstance '.\SQLEXPRESS' -IncludeSql03A -KeepDatabase
+```
+
+**Hành vi của tùy chọn:** chạy SQL-02 AC-03 trước (vẫn so 7×13 golden fields), sau đó tạo `ac09` độc lập trên **cùng DB scratch đã xác thực marker/nonce**, chạy 5 nhánh oracle AC-09, kiểm negative/retry/conflict/fault và bắt đầu hai cặp tiến trình `sqlcmd` đồng thời. Cuối cùng xác minh owner marker một lần nữa rồi guarded DROP. Tất cả bước/Oracle/SQL lỗi đều trả exit code khác 0; evidence JSON `sql/test-results/<TestRunId>.json`.
+
+| Nhánh/case | Dữ liệu có nguồn | Các sổ cần xác minh |
+|---|---|---|
+| CASH_60 | P100, cash confirmed60 | AR40, grant60, custody60 |
+| CASH_100 | P100, cash confirmed100 | AR0, grant100, custody100 |
+| CASH_60_CREDIT_20 | confirmed cash60, credit20 reserve riêng | AR20, grant80, credit trừ20, custody60 |
+| BANK_PENDING | bank evidence pending, verified0 | AR100, grant0, custody0; không allocation/credit/receipt confirmed |
+| CASH_OVERPAY_120 | cash thực120, áp100 | AR0, grant100, CustomerCredit mới20, custody120 |
+
+Số trong bảng chỉ minh họa hợp đồng đã freeze; **runner lấy expected trực tiếp từ JSON gốc tại runtime**, so decimal chính xác và xuất expected/actual/differences. Opening quantity1, quota1, cost/unit10 và credit nguồn riêng chỉ là *synthetic fixture assumptions*, không là chính sách thương mại. Credit nguồn mở đầu có `CreditSource` và `CreditReservation` gắn duy nhất với intended `CommandId`; reserve và sale cùng khóa pool, không cho command khác tiêu phần đã giữ. Nguồn CustomerCredit phát sinh từ overpay chưa thể reserve để dùng cho sale mới trong SQL-03A (để SQL-03B). `ac09` giữ command/source identity và các effect theo từng sale; B transaction ghi source, stock/COGS, quota/grant, AR, verified receipt/allocation, reserved CustomerCredit, custody hoặc không ghi gì. Bank pending chỉ có receipt ở trạng thái `PENDING`; cash overpay có allocation100 và credit mới20.
+
+**Concurrency thật:** mỗi race sử dụng **2 `sqlcmd` processes/SQL SPID khác nhau**, barrier persisted đảm bảo cả hai đã bắt đầu trước khi ai hoàn tất. **Một kết nối SQL quan sát độc lập** xác nhận `sys.dm_exec_requests` ghi nhận `LCK_M_*` và KEY lock cùng resource trên `ac09.Pool` giữa hai SPID, lưu dấu vào `RaceLockObservation`; test fail nếu không chứng minh contention. Cần quyền xem cross-session DMV (`VIEW SERVER STATE` trên SQL Server 2017/2019, LocalDB CI owner). `RACE_GRANT`: stock200, BQuota100, grant100; hai command cần exposure80, nên đúng một command được commit và command kia bị từ chối vì grant. `RACE_QUOTA`: stock200, grant1000, BQuota100; hai command qty80, trả cash đủ, nên đúng một commit và command kia bị từ chối vì quota. Cả hai phải chứng minh overlap, SPID khác nhau, error code mong đợi, không duplicate/partial ledger, số dư và amount không âm. **Cơ chế serialization:** `SERIALIZABLE` + `UPDLOCK,HOLDLOCK` trên đúng `ac09.Pool(TenantId,PoolId)` trước đọc quyền và ghi effect; đây là prototype, chưa phải chiến lược locking app được phê duyệt.
+
+**Negative cases:** available credit nhưng chưa reserve / sai CommandId / không đủ source / amount khác reservation đều bị reject; **tạo mới credit reservation sau khi sale cùng CommandId đã ACCEPTED bị reject `53218` không đổi sổ, `AssertPool` vẫn PASS; retry reservation hợp lệ đã tồn tại sau ACCEPTED trả `ALREADY_RESERVED`**; reserve cùng command+payload replay không duplicate; same ID/all-input payload replay không tăng effect; thay đổi receipt amount cùng ID conflict; fault sau stock/COGS rollback command + mọi effect; thiếu quota/grant/reserved CustomerCredit bị reject trước effect; overpay chưa cover đủ payable bị reject; bank pending không làm tăng custody; thử hai ca race độc lập. *Không* kiểm AC-11 phần dependency P→C trước/sau restart hoặc lost ACK durability end-to-end. Những phần này cần slice/evidence riêng.
+
+**File SQL-03A:** `schema/004_ac09.sql` (pool/ledger/view/invariants), `schema/005_ac09_commands.sql` (transaction, idempotency, race barrier), `tests/ac09-negative.sql`, `tests/ac09-races-setup.sql`, `tests/ac09-races-assert.sql`, `include-ac09.ps1` (load oracle, validation, sessions và evidence), workflow `.github/workflows/sql-ac09.yml`. [Evidence](../docs/evidence/2026-11-15-sql03a-ac09.md).

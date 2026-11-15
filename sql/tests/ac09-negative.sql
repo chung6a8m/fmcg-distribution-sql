@@ -1,0 +1,181 @@
+-- SQL-03A / AC-09 negative/replay/rollback. Synthetic fixtures only.
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+DECLARE @R varchar(32),@Err int,@Before int;
+-- Same producer+command+all-input payload MUST be a replay, even after credit
+-- and quota have already decreased. A different semantic payload must conflict.
+SELECT @Before=COUNT(*) FROM ac09.StockIssue WHERE TenantId='T09' AND PoolId='CASH_60';
+EXEC ac09.ExecuteSale 'CASH_60','SALE_CASH_60',1,100,60,0,60,0,0,0,@R OUTPUT;
+IF @R<>'REPLAY_ACCEPTED' THROW 53400, 'SAME_PAYLOAD_NOT_REPLAYED', 1;
+IF @Before<>(SELECT COUNT(*) FROM ac09.StockIssue WHERE TenantId='T09' AND PoolId='CASH_60')
+    THROW 53401, 'REPLAY_DUPLICATED_EFFECT', 1;
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'CASH_60','SALE_CASH_60',1,100,61,0,61,0,0,0,@R OUTPUT;
+    THROW 53402, 'DIFFERENT_PAYLOAD_NOT_CONFLICTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53201 THROW;
+END CATCH;
+IF @Before<>(SELECT COUNT(*) FROM ac09.StockIssue WHERE TenantId='T09' AND PoolId='CASH_60')
+    THROW 53403, 'CONFLICT_MUTATED_LEDGER', 1;
+
+-- Inject fault after stock/COGS inserts; command identity, all effects MUST rollback.
+INSERT ac09.Pool VALUES('T09','FAULT','TR_FAULT','SKU01','C_B',1,1,100,0,10);
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'FAULT','FAULT_CMD',1,100,60,0,60,0,1,0,@R OUTPUT;
+    THROW 53404, 'FAULT_DID_NOT_THROW', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53214 THROW;
+END CATCH;
+IF EXISTS(SELECT 1 FROM ac09.Command WHERE PoolId='FAULT')
+   OR EXISTS(SELECT 1 FROM ac09.StockIssue WHERE PoolId='FAULT')
+   OR EXISTS(SELECT 1 FROM ac09.CogsEffect WHERE PoolId='FAULT')
+   OR EXISTS(SELECT 1 FROM ac09.Receipt WHERE PoolId='FAULT')
+   OR EXISTS(SELECT 1 FROM ac09.GrantUse WHERE PoolId='FAULT')
+   OR EXISTS(SELECT 1 FROM ac09.CreditEffect WHERE PoolId='FAULT')
+    THROW 53405, 'FAULT_LEFT_PARTIAL_EFFECT', 1;
+EXEC ac09.AssertPool 'FAULT';
+
+-- Each failure has otherwise available stock and no partial command/source.
+INSERT ac09.Pool VALUES
+ ('T09','NO_QUOTA','TR_NQ','SKU01','C_B',1,0,100,0,10),
+ ('T09','NO_GRANT','TR_NG','SKU01','C_B',1,1,10,0,10),
+ ('T09','NO_CREDIT','TR_NC','SKU01','C_B',1,1,100,0,10);
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'NO_QUOTA','NQ',1,100,100,0,100,0,0,0,@R OUTPUT;
+    THROW 53406, 'QUOTA_EXCESS_COMMITTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53210 THROW;
+END CATCH;
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'NO_GRANT','NG',1,100,60,0,60,0,0,0,@R OUTPUT;
+    THROW 53407, 'GRANT_EXCESS_COMMITTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53211 THROW;
+END CATCH;
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'NO_CREDIT','NC',1,100,60,20,60,0,0,0,@R OUTPUT;
+    THROW 53408, 'UNRESERVED_CREDIT_COMMITTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53213 THROW;
+END CATCH;
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'NO_CREDIT','INVALID_OVERPAY',1,100,60,0,120,0,0,0,@R OUTPUT;
+    THROW 53409, 'UNAPPLIED_OVERPAY_COMMITTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53200 THROW;
+END CATCH;
+IF EXISTS(SELECT 1 FROM ac09.Command WHERE PoolId IN ('NO_QUOTA','NO_GRANT','NO_CREDIT'))
+    THROW 53410, 'NEGATIVE_TEST_LEFT_SOURCE', 1;
+
+-- A positive customer credit BALANCE is not itself permission to use credit.
+-- Only the separately reserved opening source for the exact command may apply.
+INSERT ac09.Pool VALUES('T09','CREDIT_RESERVED_SCOPE','TR_CRS','SKU01','C_B',2,2,100,20,10);
+INSERT ac09.CreditSource(TenantId,PoolId,SourceId,CustomerId,SourceKind,Amount)
+VALUES('T09','CREDIT_RESERVED_SCOPE','CRS_SRC','C_B','OPENING',20);
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'CREDIT_RESERVED_SCOPE','UNRESERVED',1,100,60,20,60,0,0,0,@R OUTPUT;
+    THROW 53413, 'AVAILABLE_BUT_UNRESERVED_CREDIT_ACCEPTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53215 THROW;
+END CATCH;
+EXEC ac09.ReserveCredit 'CREDIT_RESERVED_SCOPE','CRS_SRC','AUTHORIZED',20,@R OUTPUT;
+IF @R<>'RESERVED' THROW 53414, 'CREDIT_RESERVE_NOT_COMMITTED', 1;
+EXEC ac09.ReserveCredit 'CREDIT_RESERVED_SCOPE','CRS_SRC','AUTHORIZED',20,@R OUTPUT;
+IF @R<>'ALREADY_RESERVED' THROW 53415, 'CREDIT_RESERVE_REPLAY_NOT_IDEMPOTENT', 1;
+BEGIN TRY
+    EXEC ac09.ReserveCredit 'CREDIT_RESERVED_SCOPE','CRS_SRC','OTHER',1,@R OUTPUT;
+    THROW 53416, 'CREDIT_SOURCE_OVER_RESERVATION_ACCEPTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53217 THROW;
+END CATCH;
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'CREDIT_RESERVED_SCOPE','OTHER',1,100,60,20,60,0,0,0,@R OUTPUT;
+    THROW 53417, 'OTHER_COMMAND_STOLE_RESERVED_CREDIT', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53215 THROW;
+END CATCH;
+BEGIN TRY
+    EXEC ac09.ExecuteSale 'CREDIT_RESERVED_SCOPE','AUTHORIZED',1,100,60,10,60,0,0,0,@R OUTPUT;
+    THROW 53418, 'RESERVED_AMOUNT_MISMATCH_ACCEPTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53215 THROW;
+END CATCH;
+IF EXISTS(SELECT 1 FROM ac09.Command WHERE PoolId='CREDIT_RESERVED_SCOPE')
+    THROW 53419, 'BAD_CREDIT_COMMAND_LEFT_SOURCE', 1;
+EXEC ac09.ExecuteSale 'CREDIT_RESERVED_SCOPE','AUTHORIZED',1,100,60,20,60,0,0,0,@R OUTPUT;
+IF @R<>'ACCEPTED' THROW 53420, 'AUTHORIZED_RESERVATION_NOT_APPLIED', 1;
+IF NOT EXISTS(SELECT 1 FROM ac09.PoolBalances
+    WHERE TenantId='T09' AND PoolId='CREDIT_RESERVED_SCOPE'
+      AND CreditRemaining=0 AND AppliedCredit=20 AND CommandCount=1)
+    THROW 53421, 'RESERVED_CREDIT_EFFECT_MISMATCH', 1;
+EXEC ac09.AssertPool 'CREDIT_RESERVED_SCOPE';
+
+-- Retrying an existing reservation AFTER the sale is accepted is still
+-- idempotent. The new guard must reject only newly created reservations.
+EXEC ac09.ReserveCredit 'CREDIT_RESERVED_SCOPE','CRS_SRC','AUTHORIZED',20,@R OUTPUT;
+IF @R<>'ALREADY_RESERVED'
+    THROW 53422, 'EXISTING_RESERVATION_REPLAY_AFTER_ACCEPT_NOT_IDEMPOTENT', 1;
+EXEC ac09.AssertPool 'CREDIT_RESERVED_SCOPE';
+
+-- A fully paid B sale already has an immutable command/effect identity.
+-- It must not acquire a new reservation after ACCEPTED, even when the
+-- customer has free, separately sourced credit in the same pool.
+INSERT ac09.Pool VALUES('T09','CREDIT_LATE','TR_CL','SKU01','C_B',2,2,100,20,10);
+INSERT ac09.CreditSource(TenantId,PoolId,SourceId,CustomerId,SourceKind,Amount)
+VALUES('T09','CREDIT_LATE','CL_SRC','C_B','OPENING',20);
+EXEC ac09.ExecuteSale 'CREDIT_LATE','DONE',1,100,100,0,100,0,0,0,@R OUTPUT;
+IF @R<>'ACCEPTED' THROW 53423, 'FULLY_PAID_CREDIT_LATE_SETUP_FAILED', 1;
+EXEC ac09.AssertPool 'CREDIT_LATE';
+BEGIN TRY
+    EXEC ac09.ReserveCredit 'CREDIT_LATE','CL_SRC','DONE',20,@R OUTPUT;
+    THROW 53424, 'LATE_CREDIT_RESERVATION_ACCEPTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53218 THROW;
+END CATCH;
+IF EXISTS(SELECT 1 FROM ac09.CreditReservation
+          WHERE TenantId='T09' AND PoolId='CREDIT_LATE')
+   OR EXISTS(SELECT 1 FROM ac09.CreditApplication
+             WHERE TenantId='T09' AND PoolId='CREDIT_LATE')
+   OR EXISTS(SELECT 1 FROM ac09.CreditEffect
+             WHERE TenantId='T09' AND PoolId='CREDIT_LATE')
+   OR NOT EXISTS(SELECT 1 FROM ac09.PoolBalances
+                 WHERE TenantId='T09' AND PoolId='CREDIT_LATE'
+                   AND CreditRemaining=20 AND AppliedCredit=0
+                   AND CommandCount=1 AND StockRemaining=1 AND QuotaRemaining=1
+                   AND GrantRemaining=100 AND ArRemaining=0 AND CustodyCash=100)
+    THROW 53425, 'LATE_RESERVATION_CHANGED_LEDGER_OR_BALANCES', 1;
+EXEC ac09.AssertPool 'CREDIT_LATE';
+
+-- Bank PENDING amount100 is evidence only: zero confirmed receipt,
+-- allocation, custody or available CustomerCredit.
+IF NOT EXISTS(SELECT 1 FROM ac09.Receipt WHERE PoolId='BANK_PENDING'
+              AND ReceiptKind='BANK' AND State='PENDING' AND Amount=100)
+    OR EXISTS(SELECT 1 FROM ac09.ReceiptAllocation WHERE PoolId='BANK_PENDING')
+    OR EXISTS(SELECT 1 FROM ac09.CustodyEffect WHERE PoolId='BANK_PENDING')
+    OR EXISTS(SELECT 1 FROM ac09.CreditEffect WHERE PoolId='BANK_PENDING')
+    THROW 53411, 'PENDING_BANK_POSTED_AS_CONFIRMED', 1;
+-- Overpay receipt120: only 100 allocated, the extra20 is a NEW credit
+-- and custody includes all physically verified cash120.
+IF NOT EXISTS(SELECT 1 FROM ac09.Receipt WHERE PoolId='CASH_OVERPAY_120'
+             AND State='CONFIRMED' AND Amount=120)
+    OR NOT EXISTS(SELECT 1 FROM ac09.CreditEffect WHERE PoolId='CASH_OVERPAY_120'
+                  AND EffectKind='NEW' AND DeltaAmount=20)
+    OR NOT EXISTS(SELECT 1 FROM ac09.ReceiptAllocation WHERE PoolId='CASH_OVERPAY_120' AND Amount=100)
+    THROW 53412, 'OVERPAY_NOT_SPLIT_INTO_ALLOCATION_AND_CREDIT', 1;
+EXEC ac09.AssertPool 'CASH_60';
+EXEC ac09.AssertPool 'CASH_100';
+EXEC ac09.AssertPool 'CASH_60_CREDIT_20';
+EXEC ac09.AssertPool 'BANK_PENDING';
+EXEC ac09.AssertPool 'CASH_OVERPAY_120';
+SELECT 'AC09_NEGATIVE_PASS';
