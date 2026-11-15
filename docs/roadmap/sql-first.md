@@ -1,7 +1,7 @@
 # Roadmap SQL-first — Data Model → SQL Simulation → Application
 
 - **Ngày lập:** 2026-11-15
-- **Trạng thái:** ACTIVE — SQL-01/02/03A/03B/03C **MERGED / CI_SQL_VERIFIED**; SQL-04 **HANDOFF_CANDIDATE / PR_IN_REVIEW**, Owner stack decisions PENDING. [SQL-02 evidence](../evidence/2026-11-15-sql02-ac03-ci.md).
+- **Trạng thái:** SQL-FIRST **CLOSED / HANDOFF_REVIEWED** — SQL-01/02/03A/03B/03C MERGED, SQL-04 [PR #7](https://github.com/chung6a8m/fmcg-distribution-sql/pull/7) REVIEW_R2_PASS/MERGED. Owner stack + APP authorization **APPROVED 15/11/2026** theo [SQL-05 decisions](../decisions/2026-11-15-owner-app-decisions.md); app triển khai **NOT_STARTED**. [Roadmap APP](app-00-app-01.md).
 - **Repository thực hiện:** `chung6a8m/fmcg-distribution-sql`.
 - **Nguồn contract:** `business-v1.0.0` tại `business.lock.json` (source commit `88d70b3be72f34011b49b0de265ad2c43202492f`; tree `business/` = `c9a4164a99ea57e1d5f9bc8711285c6d3705f8e3`).
 - **Mục tiêu:** Có ERD đủ dùng, một mô phỏng SQL chạy được, và kiểm chứng một số bất biến khó nhất trước khi chọn backend/UI/ORM.
@@ -24,7 +24,7 @@
 | **SQL-03A — B credit, atomicity** | MERGED / CI_SQL_VERIFIED | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
 | **SQL-03B — Thu, phân bổ, nộp quỹ** | MERGED / CI_SQL_VERIFIED | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
 | **SQL-03C — Giá vốn và hoàn** | MERGED / CI_SQL_VERIFIED | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
-| **SQL-04 — Review và handoff cho app** | HANDOFF_CANDIDATE / PR_IN_REVIEW | Đánh giá mô hình sau các SQL scenarios | Review constraints/concurrency, ghi gap và quyết định còn mở; xác định vertical slice app đầu tiên và tiêu chí kiểm thử; **sau đó mới chốt app stack** |
+| **SQL-04 — Review và handoff cho app** | MERGED / REVIEW_R2_PASS | Đánh giá mô hình sau các SQL scenarios | Review constraints/concurrency, ghi gap và quyết định còn mở; xác định vertical slice app đầu tiên và tiêu chí kiểm thử; **sau đó mới chốt app stack** |
 
 **Đường găng:** SQL-01 → SQL-02 → SQL-03A/B/C → SQL-04. Các phần SQL-03 có thể tạo PR nhỏ độc lập sau khi SQL-02 được chấp nhận; không cần hoàn thiện toàn bộ 21 AC rồi mới bắt đầu app.
 
@@ -99,12 +99,12 @@ Khi SQL-03A/B/C hoàn tất, review một lần:
 - [x] Đối chiếu Logical ERD với **bốn physical namespaces thử nghiệm tách biệt**; ghi debt key/tenant/source/decimal/index/lock, concurrency và cách reproduce ở [SQL-04 review](../handoff/sql04-review.md).
 - [x] Báo cáo đủ **21 AC coverage**: SQL slice verified / SQL partial / no SQL run / external-blocked, không nâng `EV-01..15`, P0 gates hoặc Go-Live từ SQL simulation.
 - [x] Đề xuất contract app: commands/queries, transaction boundary, audit/idempotency, persistence ownership và trách nhiệm chuyển prototype sang service trong [app handoff](../handoff/sql04-app-handoff.md).
-- [x] Liệt kê **OWN-SQL04-01..06 — PENDING**: DB engine, tenancy (bảo lưu D-01 DB-per-tenant lịch sử), backend/API/UI/PWA/ORM/hosting và candidate APP-01. **Chưa tự chọn thay Owner.**
+- [x] Liệt kê OWN-SQL04-01..06; **Owner đã chọn và phê duyệt ngày 15/11/2026** theo [SQL-05 register](../decisions/2026-11-15-owner-app-decisions.md), gồm SQL Server, D-01 DB-per-tenant, .NET 10/Dapper/FluentMigrator, React PWA Online-first, local-first CI và APP-00/01 authorization.
 - [x] Tạo handoff tự chứa với APP-00→APP-01E backlog và app test gates; không tạo repository/code ứng dụng ở SQL-04.
-- [ ] Independent PR review xác nhận dispositions SQL04-G01..08 và handoff.
-- [ ] Owner quyết định stack, tenancy, APP-01/authorization ở repo ứng dụng trước khi khởi tạo app thực.
+- [x] Independent PR review SQL-04 #7 vòng 2 PASS/merged; G01..G07 vẫn mở cho app hoặc external gates.
+- [x] Owner quyết định stack, tenancy, APP-01 authorization ngày 15/11/2026. Chưa có APP implementation/CI verification.
 
-**Exit tài liệu SQL-04:** handoff đã chuẩn bị cho review; có evidence SQL, gaps, backlog app và register các quyết định PENDING. **Chưa đóng Owner gates, chưa có app/integration/go-live pass**. SQL-04 hoàn tất sau PR review/merge; lựa chọn stack là bước Owner riêng.
+**Exit tài liệu SQL-04:** đã review/merge PR #7; Owner decision register đã phê duyệt riêng qua SQL-05; SQL04-G01..G07 và mọi APP/integration/EV/P0/go-live test vẫn chưa được kiểm chứng. Bước tiếp là [APP-00A](app-00-app-01.md) ở repository ứng dụng độc lập.
 
 ## 7. Quy tắc PR, tracking và evidence
 
@@ -119,4 +119,4 @@ Khi SQL-03A/B/C hoàn tất, review một lần:
 
 Không xây app shell/API/UI/auth hay lựa chọn ORM; không xây hạ tầng cloud/CI phức tạp, ledger kế toán hoàn chỉnh, hóa đơn provider thật, offline sync production, tenant migration, cutover Kho-01 thật, PWA, chứng cứ pháp lý, pilot NPP-01. Các mục này thuộc lộ trình ứng dụng/verification riêng; các gate G-STOCK/G-CUT/G-IDEMP/G-LEDGER/G-INV vẫn chưa được miễn hoặc hoàn tất.
 
-**Bước hiện tại (15/11/2026):** SQL-01/02/03A/03B/03C đều đã merge (SQL-03C [PR #6](https://github.com/chung6a8m/fmcg-distribution-sql/pull/6), final SQL CI PASS). SQL-04 đang mở PR handoff: [review/21 AC coverage](../handoff/sql04-review.md) và [APP-01 candidate, contracts, Owner decision register](../handoff/sql04-app-handoff.md). Chờ independent PR review và các quyết định Owner sau đó. SQL Server 2017/compat140 và app E2E chưa được chứng minh; chưa chọn stack.
+**Bước tiếp theo (15/11/2026):** [SQL-04 PR #7](https://github.com/chung6a8m/fmcg-distribution-sql/pull/7) đã review/merge; [SQL-05 decisions](../decisions/2026-11-15-owner-app-decisions.md) ghi Owner phê duyệt, [APP-00/01 roadmap](app-00-app-01.md) được phép bắt đầu ở repo ứng dụng độc lập. **APP-00A chưa triển khai/verified khi ghi tài liệu**; SQL Server 2017/compat140, app E2E và production vẫn chưa có evidence.
