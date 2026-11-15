@@ -3,7 +3,7 @@
 - **Trạng thái:** `OWNER_AUTHORIZED / IMPLEMENTATION_NOT_STARTED` (2026-11-15). [Decision Register](../decisions/2026-11-15-owner-app-decisions.md).
 - **Nguồn:** [Business Baseline](../../business/README.md), [AC-03 oracle](../../business/reference-data/expected-results/golden-oracles.json), [SQL-04 review](../handoff/sql04-review.md) và [application handoff đầy đủ](../handoff/sql04-app-handoff.md).
 - **Phương châm:** Business-first, solo developer, mỗi increment có PR riêng; không mở rộng SaaS foundation, generic repository, cloud hoặc framework nghiệp vụ trước khi có nhu cầu kiểm chứng.
-- **Nơi thực thi:** repository ứng dụng độc lập (địa chỉ dự kiến `chung6a8m/fmcg-distribution-dotnet` **chưa xác minh/cấp quyền ghi**); repository này chỉ lưu SQL reference, decision, roadmap và evidence. Không tạo app code trong repository SQL.
+- **Nơi thực thi:** repository ứng dụng độc lập [chung6a8m/fmcg-distribution-dotnet](https://github.com/chung6a8m/fmcg-distribution-dotnet) — đã tạo và mở [APP-00A PR #1](https://github.com/chung6a8m/fmcg-distribution-dotnet/pull/1); repository SQL này chỉ lưu reference, decision, roadmap và evidence, không chứa app code.
 
 ## APP-00 — Foundation
 
