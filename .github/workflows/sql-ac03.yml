@@ -33,6 +33,7 @@ jobs:
             throw "GUARD_TARGET_TEST_FAILED: exit=$guardExit; output=$guardLog"
           }
           Write-Host "MASTER_TARGET_DENIED_AS_EXPECTED (exit=$guardExit)"
+          exit 0  # The child process exit 1 is expected and has been asserted above.
       - name: Execute SQL-02 twice on independent fresh scratch databases
         shell: pwsh
         run: |
