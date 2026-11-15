@@ -85,7 +85,7 @@ $checkpointQuery = 'SET NOCOUNT ON; SELECT StepOrdinal,StepName,' +
   'CONVERT(varchar(50),ReturnedQty),CONVERT(varchar(50),RefundTotal),' +
   'CONVERT(varchar(50),Cogs),CONVERT(varchar(50),MainQty),' +
   'CONVERT(varchar(50),MainValue),CONVERT(varchar(50),QuarantineQty),' +
-  'CONVERT(varchar(50),QuarantineValue) FROM ac06.Checkpoint ORDER BY StepOrdinal;'
+  'CONVERT(varchar(50),QuarantineValue) FROM ac06.CostCheckpoint ORDER BY StepOrdinal;'
 $argsSql[-1] = $checkpointQuery
 $output = @(& $SqlcmdPath @argsSql 2>&1 | ForEach-Object { $_.ToString() })
 if ($LASTEXITCODE -ne 0) { throw "AC-06 checkpoints export failed: $($output -join '; ')" }
