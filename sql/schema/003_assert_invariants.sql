@@ -64,7 +64,26 @@ BEGIN
             AND r1.SourceLineId=m.SourceLineId AND r1.EffectOrdinal=1
        LEFT JOIN ac03.RightPosting r2 ON r2.TenantId=m.TenantId
             AND r2.SourceLineId=m.SourceLineId AND r2.EffectOrdinal=2
+       LEFT JOIN ac03.AReservation a ON m.Pool='A'
+            AND a.TenantId=m.TenantId AND a.RightId=m.RightId
+       LEFT JOIN ac03.BQuota b ON m.Pool='B'
+            AND b.TenantId=m.TenantId AND b.RightId=m.RightId
+       -- AC-03 has a single opening cost source per SKU and no later inbound
+       -- or adjustment. Anchor each manifest value to that opening source.
+       OUTER APPLY (
+           SELECT SUM(o.Qty) OpeningQty,SUM(o.CostValue) OpeningValue
+           FROM ac03.StockMovement o
+           WHERE o.TenantId=m.TenantId AND o.SkuId=m.SkuId
+             AND o.MovementRole='OPENING'
+       ) opening
        WHERE mv.Qty IS NULL OR mv.Qty<>m.Qty OR mv.CostValue<>m.CostValue OR mv.SkuId<>m.SkuId
+          OR opening.OpeningQty IS NULL OR opening.OpeningQty<=0
+          OR m.CostValue<>CONVERT(decimal(28,6),
+               m.Qty*(opening.OpeningValue/NULLIF(opening.OpeningQty,0)))
+          OR (m.Pool='A' AND (a.RightId IS NULL OR a.TripId<>m.TripId OR a.SkuId<>m.SkuId))
+          OR (m.Pool='B' AND (b.RightId IS NULL OR b.TripId<>m.TripId OR b.SkuId<>m.SkuId))
+          OR p1.SourceLineId IS NULL OR p2.SourceLineId IS NULL
+          OR r1.SourceLineId IS NULL OR r2.SourceLineId IS NULL
           OR p1.LocationId<>'MAIN' OR p2.LocationId<>'TRIP'
           OR p1.DeltaQty<>-m.Qty OR p1.DeltaValue<>-m.CostValue
           OR p2.DeltaQty<>m.Qty OR p2.DeltaValue<>m.CostValue
@@ -86,6 +105,10 @@ BEGIN
        LEFT JOIN ac03.RightPosting r2 ON r2.TenantId=u.TenantId
             AND r2.SourceLineId=u.SourceLineId AND r2.EffectOrdinal=2
        WHERE mv.Qty IS NULL OR mv.Qty<>u.Qty OR mv.CostValue<>u.CostValue OR mv.SkuId<>u.SkuId
+          OR p1.SourceLineId IS NULL OR p2.SourceLineId IS NULL OR r1.SourceLineId IS NULL
+          -- Unload valuation must reuse the original manifest line's cost basis.
+          OR u.CostValue<>CONVERT(decimal(28,6),
+               u.Qty*(m.CostValue/NULLIF(m.Qty,0)))
           OR p1.LocationId<>'TRIP' OR p2.LocationId<>'MAIN'
           OR p1.DeltaQty<>-u.Qty OR p1.DeltaValue<>-u.CostValue
           OR p2.DeltaQty<>u.Qty OR p2.DeltaValue<>u.CostValue
@@ -152,6 +175,40 @@ BEGIN
            OR a.CustomerId<>d.CustomerId OR a.Module<>d.Module
            OR a.GrossDue<>CONVERT(decimal(28,6),d.Qty*d.UnitPriceSnapshot))
         THROW 51213, 'DELIVERY_STOCK_AR_COST_MISMATCH', 1;
+
+    -- Prove the delivery's own ISSUE and right posting, not only aggregate
+    -- balances: B may not consume A rights and ISSUE must debit trip custody.
+    IF EXISTS (
+        SELECT 1 FROM ac03.DeliveryLine d
+        LEFT JOIN ac03.StockMovement m ON m.TenantId=d.TenantId
+             AND m.SourceLineId=d.SourceLineId AND m.MovementRole='ISSUE'
+        LEFT JOIN ac03.StockPosting p ON p.TenantId=d.TenantId
+             AND p.SourceLineId=d.SourceLineId AND p.MovementRole='ISSUE' AND p.LegOrdinal=1
+        LEFT JOIN ac03.RightPosting r ON r.TenantId=d.TenantId
+             AND r.SourceLineId=d.SourceLineId AND r.EffectOrdinal=1
+        LEFT JOIN ac03.StockLocation loc ON loc.TenantId=d.TenantId
+             AND loc.LocationId=p.LocationId
+        LEFT JOIN ac03.Trip t ON t.TenantId=d.TenantId
+             AND t.CustodyLocationId=p.LocationId
+        WHERE m.SourceLineId IS NULL OR p.SourceLineId IS NULL OR r.SourceLineId IS NULL
+           OR loc.LocationKind IS NULL OR loc.LocationKind<>'TRIP' OR t.TripId IS NULL
+           OR m.Qty<>d.Qty OR m.SkuId<>d.SkuId
+           OR p.SkuId<>d.SkuId OR p.DeltaQty<>-d.Qty OR p.DeltaValue<>-m.CostValue
+           OR r.RightKind<>d.Module OR r.LocationId<>p.LocationId OR r.DeltaQty<>-d.Qty
+           OR (SELECT COUNT(*) FROM ac03.RightPosting x
+               WHERE x.TenantId=d.TenantId AND x.SourceLineId=d.SourceLineId)<>1
+           OR (d.Module='A' AND NOT EXISTS (
+               SELECT 1 FROM ac03.AReservation a
+               WHERE a.TenantId=d.TenantId AND a.RightId=r.RightId
+                 AND a.OrderLineId=d.AOrderLineId AND a.SkuId=d.SkuId AND a.TripId=t.TripId))
+           OR (d.Module='B' AND NOT EXISTS (
+               SELECT 1 FROM ac03.BSaleLine b
+               JOIN ac03.BQuota q ON q.TenantId=b.TenantId AND q.RightId=b.QuotaId
+               WHERE b.TenantId=d.TenantId AND b.SaleLineId=d.BSaleLineId
+                 AND b.CustomerId=d.CustomerId AND q.RightId=r.RightId
+                 AND q.SkuId=d.SkuId AND q.TripId=t.TripId)))
+        THROW 51220, 'DELIVERY_ISSUE_RIGHT_PROVENANCE_MISMATCH', 1;
+
     IF EXISTS (
         SELECT 1 FROM ac03.ArOpenItem a OUTER APPLY
           (SELECT ISNULL(SUM(x.Amount),0) Applied FROM ac03.ReceiptAllocation x
