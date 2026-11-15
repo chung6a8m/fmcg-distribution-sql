@@ -123,7 +123,8 @@ BEGIN
             @RState varchar(12), @ArCustomer varchar(40),
             @Available decimal(28,6), @ArAvailable decimal(28,6),
             @OfferAmount decimal(28,6), @Used decimal(28,6),
-            @OfferAdvanceId varchar(40), @Account varchar(40);
+            @OfferAdvanceId varchar(40), @Account varchar(40),
+            @OldScopeId varchar(40);
     -- Length-prefix identifiers (NULL and empty are distinct). No delimiter collision.
     SET @Hash=CONVERT(char(64),HASHBYTES('SHA2_256',CONCAT(
        'AC21:v1|',LEN(@Kind),':',@Kind,
@@ -139,12 +140,15 @@ BEGIN
         WHERE TenantId=@TenantId AND ScopeId=@ScopeId;
         IF @CustomerId IS NULL THROW 53302, 'SCOPE_NOT_FOUND', 1;
 
-        SELECT @OldHash=PayloadHash,@OldKind=Kind
-        FROM ac21.Command WITH(UPDLOCK,HOLDLOCK)
-        WHERE TenantId=@TenantId AND ScopeId=@ScopeId AND CommandId=@CommandId;
+        -- Serialize identity claims across ALL scopes in the tenant. The unique
+        -- tenant/command index also protects direct DML and simultaneous inserts.
+        SELECT @OldHash=PayloadHash,@OldKind=Kind,@OldScopeId=ScopeId
+        FROM ac21.Command WITH(UPDLOCK,HOLDLOCK,INDEX(UQ_Ac21CommandTenantIdentity))
+        WHERE TenantId=@TenantId AND CommandId=@CommandId;
         IF @OldHash IS NOT NULL
         BEGIN
-            IF @OldHash<>@Hash OR @OldKind<>@Kind
+            -- Identical payload on a different scope is not a valid replay.
+            IF @OldScopeId<>@ScopeId OR @OldHash<>@Hash OR @OldKind<>@Kind
                THROW 53301, 'COMMAND_ID_PAYLOAD_CONFLICT', 1;
             SET @Result='REPLAY_ACCEPTED';
             COMMIT;

@@ -27,6 +27,8 @@ CREATE TABLE ac21.Command (
     PayloadHash char(64) NOT NULL,
     AcceptedUtc datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT PK_Ac21Command PRIMARY KEY (TenantId,ScopeId,CommandId),
+    -- A command/source identity must not be reused in another scope of the same tenant.
+    CONSTRAINT UQ_Ac21CommandTenantIdentity UNIQUE (TenantId,CommandId),
     CONSTRAINT FK_Ac21CommandScope FOREIGN KEY (TenantId,ScopeId)
       REFERENCES ac21.Scope(TenantId,ScopeId)
 );

@@ -14,12 +14,36 @@ BEGIN
     DECLARE @Observed int=0,@Result varchar(32),
             @BeforeAR decimal(28,6),@BeforeCredit decimal(28,6),
             @BeforeCustody decimal(28,6),@BeforeFund decimal(28,6),
-            @BeforeAlloc decimal(28,6),@BeforeAdvance decimal(28,6);
+            @BeforeAlloc decimal(28,6),
+            @BeforeIssued decimal(28,6),@BeforeExpenses decimal(28,6),
+            @BeforeReturns decimal(28,6),@BeforeOutstanding decimal(28,6),
+            @BeforeAdvanceAccounts bigint,@BeforeSourceRows bigint,
+            @BeforeEffectRows bigint;
+    -- Snapshot the requested tenant/scope, never a fixed fixture scope.
     SELECT @BeforeAR=Ar,@BeforeCredit=Credit,@BeforeCustody=Custody,
            @BeforeFund=Fund,@BeforeAlloc=Allocated
-      FROM ac21.CustomerBalances WHERE TenantId='T21' AND ScopeId='MAIN';
-    SELECT @BeforeAdvance=Outstanding FROM ac21.AdvanceBalances
-      WHERE TenantId='T21' AND ScopeId='MAIN' AND AdvanceId='ADV_01';
+      FROM ac21.CustomerBalances WHERE TenantId=@TenantId AND ScopeId=@ScopeId;
+    IF @BeforeAR IS NULL THROW 53749, 'REJECT_PROBE_SCOPE_MISSING', 1;
+    SELECT @BeforeIssued=ISNULL(SUM(Issued),0),
+           @BeforeExpenses=ISNULL(SUM(ApprovedExpenses),0),
+           @BeforeReturns=ISNULL(SUM(CashierAcceptedReturns),0),
+           @BeforeOutstanding=ISNULL(SUM(Outstanding),0),
+           @BeforeAdvanceAccounts=COUNT_BIG(*)
+      FROM ac21.AdvanceBalances WHERE TenantId=@TenantId AND ScopeId=@ScopeId;
+    SELECT @BeforeSourceRows=COUNT_BIG(*) FROM ac21.Command
+      WHERE TenantId=@TenantId AND ScopeId=@ScopeId;
+    -- Include every source/effect family, not just the derived balances.
+    SELECT @BeforeEffectRows=
+        (SELECT COUNT_BIG(*) FROM ac21.Receipt WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.ArAllocation WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.HandoverOffer WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.HandoverAccept WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.CustodyPosting WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.FundPosting WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.AdvanceIssue WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.AdvanceExpense WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.AdvanceOffer WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.AdvanceAccept WHERE TenantId=@TenantId AND ScopeId=@ScopeId);
     BEGIN TRY
         EXEC ac21.PostCommand @TenantId=@TenantId,@ScopeId=@ScopeId,
              @CommandId=@CommandId,@Kind=@Kind,@Amount=@Amount,
@@ -35,16 +59,39 @@ BEGIN
     IF EXISTS(SELECT 1 FROM ac21.Command WHERE TenantId=@TenantId
        AND ScopeId=@ScopeId AND CommandId=@CommandId)
        THROW 53751, 'REJECTED_COMMAND_LEFT_SOURCE', 1;
-    IF EXISTS(SELECT 1 FROM ac21.CustomerBalances
-      WHERE TenantId='T21' AND ScopeId='MAIN'
-        AND (Ar<>@BeforeAR OR Credit<>@BeforeCredit OR Custody<>@BeforeCustody
-             OR Fund<>@BeforeFund OR Allocated<>@BeforeAlloc))
+    IF NOT EXISTS(SELECT 1 FROM ac21.CustomerBalances
+      WHERE TenantId=@TenantId AND ScopeId=@ScopeId
+        AND Ar=@BeforeAR AND Credit=@BeforeCredit AND Custody=@BeforeCustody
+        AND Fund=@BeforeFund AND Allocated=@BeforeAlloc)
        THROW 53752, 'REJECTION_CHANGED_CUSTOMER_BALANCES', 1;
-    IF EXISTS(SELECT 1 FROM ac21.AdvanceBalances
-      WHERE TenantId='T21' AND ScopeId='MAIN' AND AdvanceId='ADV_01'
-        AND Outstanding<>@BeforeAdvance)
-       THROW 53753, 'REJECTION_CHANGED_ADVANCE_BALANCE', 1;
-    EXEC ac21.AssertScope 'T21','MAIN';
+    IF (SELECT COUNT_BIG(*) FROM ac21.AdvanceBalances
+        WHERE TenantId=@TenantId AND ScopeId=@ScopeId)<>@BeforeAdvanceAccounts
+       OR EXISTS(SELECT 1 FROM
+         (SELECT ISNULL(SUM(Issued),0) AS Issued,
+                 ISNULL(SUM(ApprovedExpenses),0) AS Expenses,
+                 ISNULL(SUM(CashierAcceptedReturns),0) AS Returns,
+                 ISNULL(SUM(Outstanding),0) AS Outstanding
+          FROM ac21.AdvanceBalances
+          WHERE TenantId=@TenantId AND ScopeId=@ScopeId) AS b
+         WHERE b.Issued<>@BeforeIssued OR b.Expenses<>@BeforeExpenses
+            OR b.Returns<>@BeforeReturns OR b.Outstanding<>@BeforeOutstanding)
+       THROW 53753, 'REJECTION_CHANGED_ADVANCE_BALANCES', 1;
+    IF (SELECT COUNT_BIG(*) FROM ac21.Command
+        WHERE TenantId=@TenantId AND ScopeId=@ScopeId)<>@BeforeSourceRows
+       THROW 53769, 'REJECTION_CHANGED_COMMAND_COUNT', 1;
+    IF @BeforeEffectRows<>(
+        (SELECT COUNT_BIG(*) FROM ac21.Receipt WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.ArAllocation WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.HandoverOffer WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.HandoverAccept WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.CustodyPosting WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.FundPosting WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.AdvanceIssue WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.AdvanceExpense WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.AdvanceOffer WHERE TenantId=@TenantId AND ScopeId=@ScopeId)
+       +(SELECT COUNT_BIG(*) FROM ac21.AdvanceAccept WHERE TenantId=@TenantId AND ScopeId=@ScopeId))
+       THROW 53770, 'REJECTION_CHANGED_EFFECT_COUNT', 1;
+    EXEC ac21.AssertScope @TenantId,@ScopeId;
 END;
 GO
 DECLARE @Result varchar(32),@N int;
@@ -151,6 +198,29 @@ IF EXISTS(SELECT 1 FROM ac21.FundPosting WHERE AcceptId='FAULT_ACCEPT')
  OR EXISTS(SELECT 1 FROM ac21.CustodyPosting WHERE SourceId='FAULT_ACCEPT')
  THROW 53765, 'CASHIER_FAULT_LEFT_PARTIAL_POSTING', 1;
 
+-- A command/receipt source ID belongs to one scope per tenant.
+-- A second scope with the SAME collector and customer must not post it again.
+INSERT ac21.Scope VALUES('T21','SAME_PRODUCER','CUSTOMER01','COLLECTOR01');
+EXEC ac21.ExpectReject 'RECEIPT_60K','RECEIPT',60000,53301,
+ @Channel='CASH',@ReceiptState='CONFIRMED',@ScopeId='SAME_PRODUCER';
+EXEC ac21.ExpectReject 'RECEIPT_60K','RECEIPT',70000,53301,
+ @Channel='CASH',@ReceiptState='CONFIRMED',@ScopeId='SAME_PRODUCER';
+IF (SELECT COUNT_BIG(*) FROM ac21.Command
+    WHERE TenantId='T21' AND CommandId='RECEIPT_60K')<>1
+ THROW 53771, 'CROSS_SCOPE_DUPLICATED_SOURCE_ID', 1;
+-- Direct writes also cannot bypass the tenant-wide uniqueness rule.
+BEGIN TRY
+ BEGIN TRANSACTION;
+ INSERT ac21.Command(TenantId,ScopeId,CommandId,Kind,PayloadHash)
+ VALUES('T21','SAME_PRODUCER','RECEIPT_60K','RECEIPT',REPLICATE('0',64));
+ ROLLBACK;
+ THROW 53772, 'CROSS_SCOPE_UNIQUE_CONSTRAINT_NOT_ENFORCED', 1;
+END TRY
+BEGIN CATCH
+ IF @@TRANCOUNT>0 ROLLBACK;
+ IF ERROR_NUMBER() NOT IN (2601,2627) THROW;
+END CATCH;
+
 -- Over-AR even when a receipt has abundant credit (separate customer scope).
 INSERT ac21.Scope VALUES('T21','SMALL_AR','CUSTOMER02','COLLECTOR02');
 INSERT ac21.ArOpenItem VALUES('T21','SMALL_AR','AR_TINY','CUSTOMER02',100);
@@ -198,6 +268,7 @@ EXEC ac21.ExpectReject 'ADV_FAULT_ISSUE','ADV_ISSUE',100,53390,
  @TargetId='ADV_01',@InjectFault=1;
 EXEC ac21.AssertScope 'T21','MAIN';
 EXEC ac21.AssertScope 'T21','SMALL_AR';
+EXEC ac21.AssertScope 'T21','SAME_PRODUCER';
 EXEC ac21.AssertScope 'T22','MAIN';
 -- End-state must still match captured actual checkpoints after all negative tests.
 IF EXISTS(SELECT 1 FROM ac21.CustomerBalances b
