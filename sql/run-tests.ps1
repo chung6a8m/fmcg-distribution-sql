@@ -119,11 +119,12 @@ try {
     }
     Get-Command $SqlcmdPath -ErrorAction Stop | Out-Null
     Assert-ScratchName $script:DbName
-    $identity = Run-Sql -Database 'master' -Query @"
+    $identityQuery = @"
 SET NOCOUNT ON;
 SELECT CONVERT(varchar(128),SERVERPROPERTY('ServerName'))+'|'+DB_NAME()
        +'|'+CONVERT(varchar(128),SERVERPROPERTY('ProductVersion'));
-"@ -Label 'server/instance identity'
+"@
+    $identity = Run-Sql -Database 'master' -Query $identityQuery -Label 'server/instance identity'
     $parts = $identity.Split('|')
     if ($parts.Count -ne 3 -or $parts[1] -ne 'master') {
         throw "Unsafe or ambiguous server response: [$identity]"
@@ -170,10 +171,11 @@ SELECT 'MARKED';
     if ($denied -ne 3) { throw "GUARD_NEGATIVE_PROBES_FAILED: expected 3 denials, got $denied" }
     $report.GuardChecks += 'MASTER_EXISTING_TARGET_WRONG_NONCE_DENIED'
 
-    $version = Run-Sql -Database $script:DbName -Query @"
+    $versionQuery = @"
 SET NOCOUNT ON;
 SELECT CONVERT(varchar(10),compatibility_level) FROM sys.databases WHERE name=DB_NAME();
-"@ -Label 'compatibility'
+"@
+    $version = Run-Sql -Database $script:DbName -Query $versionQuery -Label 'compatibility'
     $report.CompatibilityLevel = [int]$version
     if ($report.CompatibilityLevel -lt 140) {
         throw "SQL compatibility level 140+ required; actual=$version"
