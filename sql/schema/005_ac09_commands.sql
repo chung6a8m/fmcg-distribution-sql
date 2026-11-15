@@ -46,6 +46,15 @@ BEGIN
             COMMIT;
             RETURN;
         END;
+        -- Only an existing, identical reservation can be replayed after the
+        -- sale. Creating a NEW reservation for an ACCEPTED command would leave
+        -- its zero-credit sale with an unmatched credit obligation and break
+        -- AssertPool's source/effect provenance. Pool UPDLOCK above serializes
+        -- this check with ExecuteSale, which commits Command + Sale atomically.
+        IF EXISTS(
+            SELECT 1 FROM ac09.Command WITH (UPDLOCK,HOLDLOCK)
+            WHERE TenantId=@TenantId AND PoolId=@PoolId AND CommandId=@CommandId)
+            THROW 53218, 'CREDIT_RESERVATION_AFTER_ACCEPTED_COMMAND', 1;
         SELECT @AlreadyReserved=ISNULL(SUM(Amount),0)
         FROM ac09.CreditReservation
         WHERE TenantId=@TenantId AND PoolId=@PoolId AND SourceId=@SourceId;

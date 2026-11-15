@@ -120,6 +120,43 @@ IF NOT EXISTS(SELECT 1 FROM ac09.PoolBalances
     THROW 53421, 'RESERVED_CREDIT_EFFECT_MISMATCH', 1;
 EXEC ac09.AssertPool 'CREDIT_RESERVED_SCOPE';
 
+-- Retrying an existing reservation AFTER the sale is accepted is still
+-- idempotent. The new guard must reject only newly created reservations.
+EXEC ac09.ReserveCredit 'CREDIT_RESERVED_SCOPE','CRS_SRC','AUTHORIZED',20,@R OUTPUT;
+IF @R<>'ALREADY_RESERVED'
+    THROW 53422, 'EXISTING_RESERVATION_REPLAY_AFTER_ACCEPT_NOT_IDEMPOTENT', 1;
+EXEC ac09.AssertPool 'CREDIT_RESERVED_SCOPE';
+
+-- A fully paid B sale already has an immutable command/effect identity.
+-- It must not acquire a new reservation after ACCEPTED, even when the
+-- customer has free, separately sourced credit in the same pool.
+INSERT ac09.Pool VALUES('T09','CREDIT_LATE','TR_CL','SKU01','C_B',2,2,100,20,10);
+INSERT ac09.CreditSource(TenantId,PoolId,SourceId,CustomerId,SourceKind,Amount)
+VALUES('T09','CREDIT_LATE','CL_SRC','C_B','OPENING',20);
+EXEC ac09.ExecuteSale 'CREDIT_LATE','DONE',1,100,100,0,100,0,0,0,@R OUTPUT;
+IF @R<>'ACCEPTED' THROW 53423, 'FULLY_PAID_CREDIT_LATE_SETUP_FAILED', 1;
+EXEC ac09.AssertPool 'CREDIT_LATE';
+BEGIN TRY
+    EXEC ac09.ReserveCredit 'CREDIT_LATE','CL_SRC','DONE',20,@R OUTPUT;
+    THROW 53424, 'LATE_CREDIT_RESERVATION_ACCEPTED', 1;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER()<>53218 THROW;
+END CATCH;
+IF EXISTS(SELECT 1 FROM ac09.CreditReservation
+          WHERE TenantId='T09' AND PoolId='CREDIT_LATE')
+   OR EXISTS(SELECT 1 FROM ac09.CreditApplication
+             WHERE TenantId='T09' AND PoolId='CREDIT_LATE')
+   OR EXISTS(SELECT 1 FROM ac09.CreditEffect
+             WHERE TenantId='T09' AND PoolId='CREDIT_LATE')
+   OR NOT EXISTS(SELECT 1 FROM ac09.PoolBalances
+                 WHERE TenantId='T09' AND PoolId='CREDIT_LATE'
+                   AND CreditRemaining=20 AND AppliedCredit=0
+                   AND CommandCount=1 AND StockRemaining=1 AND QuotaRemaining=1
+                   AND GrantRemaining=100 AND ArRemaining=0 AND CustodyCash=100)
+    THROW 53425, 'LATE_RESERVATION_CHANGED_LEDGER_OR_BALANCES', 1;
+EXEC ac09.AssertPool 'CREDIT_LATE';
+
 -- Bank PENDING amount100 is evidence only: zero confirmed receipt,
 -- allocation, custody or available CustomerCredit.
 IF NOT EXISTS(SELECT 1 FROM ac09.Receipt WHERE PoolId='BANK_PENDING'
