@@ -182,6 +182,39 @@ BEGIN CATCH
 END CATCH;
 EXEC ac03.AssertInvariants;
 
+-- N-14c: a B issue points at the wrong (same-tenant) SKU while its
+-- movement, delivery, and right all still point at SKU01.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    INSERT ac03.Sku VALUES('T01','SKU_WRONG',10);
+    UPDATE ac03.StockPosting SET SkuId='SKU_WRONG'
+     WHERE SourceLineId='B20-01' AND MovementRole='ISSUE' AND LegOrdinal=1;
+    EXEC ac03.AssertInvariants;
+    THROW 51420, 'N14_WRONG_DELIVERY_STOCK_SKU_PASSED', 1;
+END TRY
+BEGIN CATCH
+    SET @Err=ERROR_NUMBER();
+    IF @@TRANCOUNT>0 ROLLBACK;
+    IF @Err<>51220 THROW;
+END CATCH;
+
+-- N-14d: balance B/A ISSUE quantity errors across two sources so total
+-- physical stock remains right; per-movement leg quantity must fail.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    UPDATE ac03.StockPosting
+       SET DeltaQty=CASE SourceLineId WHEN 'B20-01' THEN -21 ELSE -24 END
+     WHERE MovementRole='ISSUE' AND SourceLineId IN ('B20-01','A25-01');
+    EXEC ac03.AssertInvariants;
+    THROW 51421, 'N14_WRONG_DELIVERY_ISSUE_QTY_PASSED', 1;
+END TRY
+BEGIN CATCH
+    SET @Err=ERROR_NUMBER();
+    IF @@TRANCOUNT>0 ROLLBACK;
+    IF @Err<>51205 THROW;
+END CATCH;
+EXEC ac03.AssertInvariants;
+
 -- N-04: replay previously accepted B/A/acceptance after rights and custody
 -- have decreased to zero. A replay must be checked BEFORE new preconditions.
 SELECT @BeforeCount=COUNT(*) FROM ac03.StockPosting;
