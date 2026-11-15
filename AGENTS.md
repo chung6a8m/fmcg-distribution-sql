@@ -15,9 +15,12 @@ Repository này dành cho **phát triển sản phẩm**, sử dụng Business B
 - Mọi source, test, tài liệu triển khai về sau nằm **ngoài `business/`**; sử dụng contract trong repo này, không tạo phụ thuộc runtime vào repo canonical.
 - Không chỉnh sửa canonical repository từ nhiệm vụ làm việc trên repo này. Không tự giả định rằng mô tả nghiệp vụ đã được Product Verification hoặc tenant Go-Live Acceptance.
 
-## Cách triển khai sau khi chọn stack
+## Cách triển khai SQL-first
 
-- **Hiện chưa chọn tech stack, chưa có source và chưa có roadmap.** Không tự thêm những nội dung này khi chưa được yêu cầu.
+- Roadmap hiện hành: `docs/roadmap/sql-first.md`. Ưu tiên **SQL-01 + SQL-02 / AC-03**, sau đó SQL-03A/B/C; không tự mở rộng toàn bộ ERD hoặc tạo app/API/UI/ORM.
+- Chỉ sử dụng SQL Server 2017+ làm **engine prototype tạm chọn**; chưa chốt DB production, chiến lược tenant isolation hoặc application stack. Không biến T-SQL prototype thành kiến trúc ứng dụng mặc định.
+- Golden oracles tại `business/reference-data/expected-results/` phải được test harness đọc/derive xác định từ nguồn; không sao chép expected thủ công rồi chỉnh để PASS.
+- Với SQL scenarios, thử cả **transaction rollback, negative tests, idempotency và đồng thời thực** khi được yêu cầu, kèm logs/actual/environment; test SQL không chứng minh app E2E hoặc tenant go-live.
 - Với mỗi vertical slice: chỉ ra BR/POL/SOP/AC, scenario/fixture, expected, negative cases và cách kiểm tra actual; phân biệt **MODEL_ONLY / NOT_RUN**, local verified, integrated verified và go-live accepted.
 - Bảo toàn bất biến tenant isolation, quyền phê duyệt, giá vốn, hàng trên chuyến, công nợ, tiền giữ hộ, tạm ứng, idempotency và audit theo contract. Không sửa golden data để hợp với implementation.
 - Chọn cách làm tối thiểu, tránh thêm service, CI gate, tài liệu quản trị hoặc framework chưa cần.

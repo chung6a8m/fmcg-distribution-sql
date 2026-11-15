@@ -1,6 +1,6 @@
-# FMCG Distribution — DMS Product Repository
+# FMCG Distribution — DMS SQL-first Prototype
 
-Repository độc lập để triển khai ứng dụng DMS cho doanh nghiệp phân phối hàng tiêu dùng Việt Nam theo hướng **Business-first dành cho solo developer**. Không phải fork, submodule hoặc subtree của repository nguồn.
+Repository độc lập để kiểm chứng **mô hình dữ liệu và nghiệp vụ DMS bằng SQL** trước khi chọn toàn bộ tech stack ứng dụng, theo hướng **Business-first dành cho solo developer**. Không phải fork, submodule hoặc subtree của repository nguồn.
 
 ## Bắt đầu từ Business Baseline
 
@@ -20,6 +20,10 @@ git rev-parse HEAD:business
 
 Tree SHA phải bằng `businessTreeSha` trong `business.lock.json`. Workflow `.github/workflows/business-contract.yml` chạy validator khi push/PR. Kết quả chỉ xác nhận **document/model**, không phải implementation verified hoặc tenant go-live accepted.
 
+## Roadmap SQL-first
+
+Xem **[Roadmap triển khai đang hoạt động](docs/roadmap/sql-first.md)**: SQL-01 Logical ERD → SQL-02 AC-03 runnable → SQL-03A/B/C kiểm thử quota/tiền/giá vốn → SQL-04 review & handoff. SQL Server 2017+ được đề xuất **chỉ làm engine thử nghiệm**, chưa phải quyết định DB production hoặc app stack.
+
 ## Trạng thái
 
-Đã cố định **Business Baseline v1.0**; **chưa chọn tech stack, chưa có source ứng dụng và chưa có roadmap triển khai**. Những nội dung này chỉ bổ sung sau khi Owner quyết định.
+Đã cố định **Business Baseline v1.0** và lập roadmap SQL-first. **Chưa có SQL implementation/test run, chưa chọn backend/UI/ORM và chưa có source ứng dụng.** Các checkpoint trong roadmap đều TODO cho tới khi thực thi và có evidence.
