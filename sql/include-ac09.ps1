@@ -45,7 +45,7 @@ function Invoke-ParallelSqlRace {
             }
             $results += $received[0]
         }
-        return ,$results
+        return $results
     } finally {
         foreach ($job in $jobs) {
             if ($job.State -eq 'Running') { Stop-Job -Job $job -ErrorAction SilentlyContinue }
@@ -158,6 +158,7 @@ if ($ready -ne 'RACES_READY') { throw "AC09_RACE_SETUP_NOT_CONFIRMED: $ready" }
 foreach ($raceId in @('RACE_GRANT','RACE_QUOTA')) {
     Assert-OwnedMarker $script:DbName $script:TestRunId
     $clients = @(Invoke-ParallelSqlRace -RaceId $raceId)
+    foreach ($client in $clients) { Write-Host "AC-09 $raceId $($client.Attempt): $($client.Output)" }
     $report['Ac09Races'] += [ordered]@{
         RaceId=$raceId
         Clients=@($clients)
