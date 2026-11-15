@@ -78,7 +78,7 @@ Bộ negative cases có lỗi mong đợi/rollback và kiểm không còn side e
 
 ## SQL-03A — AC-09 B credit, atomic transaction và two-session races
 
-**Trạng thái PR #4:** đang review; chỉ ghi **CI_SQL_VERIFIED** khi workflow SQL-03A trên đúng HEAD PASS và có evidence gắn với run. SQL-03A chỉ là executable specification; không tự chứng minh AC-11 đầy đủ, app E2E, kế toán/hóa đơn, local SQL Server 2017 compat140 hay Go-Live.
+**Trạng thái PR #4:** **CI_SQL_VERIFIED / IN_REVIEW** cho executable source HEAD `5f7838f5c96abb50988b386eed3e96a68ce3c622`, hai lần scratch PASS trên [CI run 43707786496](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43707786496); xem [evidence](../docs/evidence/2026-11-15-sql03a-ac09.md). SQL-03A chỉ là executable specification; không tự chứng minh AC-11 đầy đủ, app E2E, kế toán/hóa đơn, local SQL Server 2017 compat140 hay Go-Live.
 
 **Nguồn bất biến:** `../business/reference-data/scenarios/business-cases.json#AC-09`, `../business/reference-data/expected-results/additional-oracles.json#AC-09`; BR-04/11/12/13/14/16; SOP-03. Không sửa business snapshot hoặc copy expected numeric vào test SQL.
 
