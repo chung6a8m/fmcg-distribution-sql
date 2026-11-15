@@ -26,19 +26,22 @@ BEGIN
     -- Every transfer has exactly two balanced legs with the same source/SKU.
     IF EXISTS (
        SELECT 1 FROM ac03.StockMovement m
-       OUTER APPLY (SELECT COUNT(*) Cnt,SUM(p.DeltaQty) SumQty,SUM(p.DeltaValue) SumValue,
-                           SUM(CASE WHEN p.LegOrdinal=1 AND p.DeltaQty=-m.Qty
-                                     AND p.DeltaValue=-m.CostValue AND p.SkuId=m.SkuId
-                                    THEN 1 ELSE 0 END) ExitLeg,
-                           SUM(CASE WHEN p.LegOrdinal=2 AND p.DeltaQty=m.Qty
-                                     AND p.DeltaValue=m.CostValue AND p.SkuId=m.SkuId
-                                    THEN 1 ELSE 0 END) EntryLeg
+       OUTER APPLY (SELECT COUNT(*) Cnt,SUM(p.DeltaQty) SumQty,SUM(p.DeltaValue) SumValue
                     FROM ac03.StockPosting p
                     WHERE p.TenantId=m.TenantId AND p.SourceLineId=m.SourceLineId
                       AND p.MovementRole=m.MovementRole) legs
        WHERE m.MovementRole='TRANSFER'
          AND (legs.Cnt<>2 OR legs.SumQty<>0 OR legs.SumValue<>0
-              OR legs.ExitLeg<>1 OR legs.EntryLeg<>1))
+           OR NOT EXISTS (
+                SELECT 1 FROM ac03.StockPosting p
+                WHERE p.TenantId=m.TenantId AND p.SourceLineId=m.SourceLineId
+                  AND p.MovementRole=m.MovementRole AND p.LegOrdinal=1
+                  AND p.DeltaQty=-m.Qty AND p.DeltaValue=-m.CostValue AND p.SkuId=m.SkuId)
+           OR NOT EXISTS (
+                SELECT 1 FROM ac03.StockPosting p
+                WHERE p.TenantId=m.TenantId AND p.SourceLineId=m.SourceLineId
+                  AND p.MovementRole=m.MovementRole AND p.LegOrdinal=2
+                  AND p.DeltaQty=m.Qty AND p.DeltaValue=m.CostValue AND p.SkuId=m.SkuId)))
         THROW 51204, 'TRANSFER_LEGS_MISMATCH', 1;
     IF EXISTS (
        SELECT 1 FROM ac03.StockMovement m
