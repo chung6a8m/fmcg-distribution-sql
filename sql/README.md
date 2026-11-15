@@ -1,6 +1,6 @@
 # SQL-02 — AC-03 executable SQL (SQL Server 2017+)
 
-**Trạng thái:** **CI_SQL_VERIFIED** trên Windows / SQL Server 2019 LocalDB (compat 150), **2 lần fresh-scratch PASS**; PR #3 vẫn pending review/merge. [Evidence/actual và TestRunIds](../docs/evidence/2026-11-15-sql02-ac03-ci.md), [CI PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43702421402). Đây là SQL executable specification, **không** phải app E2E hoặc Go-Live, không dùng để bật B_ONLINE production.
+**Trạng thái:** **CI_SQL_VERIFIED** trên Windows / SQL Server 2019 LocalDB (compat 150), **2 lần fresh-scratch PASS**; PR #3 vẫn pending review/merge. [Evidence/actual và TestRunIds](../docs/evidence/2026-11-15-sql02-ac03-ci.md), [CI PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43705303178). Đây là SQL executable specification, **không** phải app E2E hoặc Go-Live, không dùng để bật B_ONLINE production.
 
 ## Phạm vi và nguồn
 
@@ -11,6 +11,8 @@
 - **SQL-01:** [Logical ERD](../docs/data-model/logical-erd.md), [invariants](../docs/data-model/invariants.md), [transaction boundaries](../docs/data-model/transaction-boundaries.md), [mapping T0..T6](../docs/data-model/ac03-mapping.md).
 
 Các lựa chọn fixture-only chưa được Owner phê duyệt làm policy: OQ-01 A terms `N=7` có flag synthetic approved tại Confirm; OQ-02 lệnh B31 dùng offered cash465 để **chỉ kiểm lỗi quota**, không ghi receipt; OQ-03 grant B100 có scope `AC03_SYNTHETIC_TRIP`; OQ-04 A held15 chuyển placement về MAIN nhưng chưa tự đóng sạch Trip; OQ-05 fixed unit cost10, price15, DECIMAL exact, không kiểm lot/tax/currency.
+
+**Giới hạn cost provenance:** SQL-02 giả định riêng AC-03 chỉ có một opening cost source/SKU và không có inbound/cost adjustment. Invariant so cost ManifestLine từ opening, so UnloadLine với manifest gốc; không coi đây là chính sách costing/rounding tổng quát (sẽ kiểm riêng ở SQL-03C).
 
 ## Cách chạy trên Windows
 
@@ -56,7 +58,7 @@ Runner cũng tự thử ba negative probes không phá dữ liệu: tên `master
 
 `ac03.LiveBalances` derive actual từ StockPosting, DeliveryLine, CogsEffect, RightPosting, AR+Allocations, CustodyEffect/FundEffect; không copy các con số oracle vào bảng expected mới. `CaptureCheckpoint` lưu 7 snapshot **actual**; PowerShell nạp JSON golden gốc bằng `ConvertFrom-Json`, so tên cột đúng thứ tự và so numeric bằng decimal, không dùng FLOAT.
 
-Bộ negative cases có lỗi mong đợi/rollback và kiểm không còn side effect: **N-01** B31, **N-03** load vượt A hold, **N-04** replay/conflict & effect count, **N-06** OFFER không sổ, **N-08** wrong-tenant FK, **N-09** fault sau vài B/transfer effects, **N-11** sourceLineId duy nhất tenant nhưng ordinal có thể trùng khác event, **N-12** wrong-Customer allocation & A Delivery, **N-13** tổng manifest không đổi nhưng dòng/pool giả sai. Assertion theo từng source movement/2 posting legs, quyền quantity và source provenance. SQL-03A sẽ test **hai SQL sessions thực** tranh BQuota và credit grant; SQL-02 không tuyên bố đã test đồng thời đó.
+Bộ negative cases có lỗi mong đợi/rollback và kiểm không còn side effect: **N-01** B31, **N-03** load vượt A hold, **N-04** replay/conflict & effect count, **N-06** OFFER không sổ, **N-08** wrong-tenant FK, **N-09** fault sau vài B/transfer effects, **N-11** sourceLineId duy nhất tenant nhưng ordinal có thể trùng khác event, **N-12** wrong-Customer allocation & A Delivery, **N-13** tổng manifest/unload không đổi nhưng dòng/pool/giá trị A/B bị tráo vẫn bị reject; **N-14** sai pool quyền giao B/A, ISSUE trừ nhầm location/SKU, hoặc drift qty theo từng ISSUE trong khi tổng vẫn đúng. Assertion theo từng source movement/2 posting legs, quyền quantity và source provenance. SQL-03A sẽ test **hai SQL sessions thực** tranh BQuota và credit grant; SQL-02 không tuyên bố đã test đồng thời đó.
 
 ## File và giới hạn
 
@@ -67,6 +69,6 @@ Bộ negative cases có lỗi mong đợi/rollback và kiểm không còn side e
 - `tests/negative.sql`: wrong-customer/tenant/source, per-source corruption và retry.
 - `run-tests.ps1`: entrypoint + DB guard + compare oracle gốc + evidence.
 
-**Đã xác minh thực tế:** `sqlcmd` chạy SQL Server **2019 LocalDB v15.0.4382.1 / compatibility 150**, 2 lần trên 2 scratch DB khác nhau, mỗi lần 7/7 checkpoints và 91/91 field comparisons PASS (tổng 182 phép so), negative/fault tests PASS, cleanup guard PASS. CI cũng thực thi lệnh chống target `master`, nhận **exit 1/UNSAFE_TARGET/NO_DATABASE_CREATED**. Artifact chứa JSON expected/actual/diff và môi trường từng run, kể cả negative guard có status FAIL **được mong đợi**. [Xem evidence](../docs/evidence/2026-11-15-sql02-ac03-ci.md).
+**Đã xác minh thực tế:** `sqlcmd` chạy SQL Server **2019 LocalDB v15.0.4382.1 / compatibility 150**, 2 lần trên 2 scratch DB khác nhau, mỗi lần 7/7 checkpoints và 91/91 field comparisons PASS (tổng 182 phép so), negative/fault tests PASS, gồm 6 probes mới N-13c/d và N-14a/b/c/d, cleanup guard PASS. CI cũng thực thi lệnh chống target `master`, nhận **exit 1/UNSAFE_TARGET/NO_DATABASE_CREATED**. Artifact chứa JSON expected/actual/diff và môi trường từng run, kể cả negative guard có status FAIL **được mong đợi**. [Xem evidence](../docs/evidence/2026-11-15-sql02-ac03-ci.md).
 
 **Chưa kiểm chứng:** máy Windows của người dùng, SQL Server 2017 compatibility 140, two-session concurrency (SQL-03A), VAT/rounding ngoài AC-03, tài khoản/authorization ở app, provider invoice/accounting, offline recovery, cutover, production tenancy, Go-Live. Bất kỳ thay đổi semantic nào phải thông qua Business Baseline canonical; `business/` và `business.lock.json` không bị sửa.
