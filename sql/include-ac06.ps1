@@ -33,7 +33,7 @@ $sqlFields = @('SourceQty','SourceOriginalCost','FirstRefund',
                'OriginalSecondRefund','SourceAdjustedCost','FirstRefundAdjustment',
                'FinalSecondRefund','ExpectedOriginalSum','ExpectedAdjustedSum',
                'LockedPeriodMutationAllowed')
-if ($oracle.PSObject.Properties.Count -lt 12) {
+if (@($oracle.PSObject.Properties).Count -lt 12) {
     throw 'AC06_ORACLE_FIELD_SET_UNEXPECTED'
 }
 $query = 'SET NOCOUNT ON; SELECT ' +
