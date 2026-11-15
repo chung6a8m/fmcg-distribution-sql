@@ -1,7 +1,7 @@
 # Roadmap SQL-first — Data Model → SQL Simulation → Application
 
 - **Ngày lập:** 2026-11-15
-- **Trạng thái:** ACTIVE — SQL-01 đã merge (MODEL_ONLY); SQL-02 **MERGED / CI_SQL_VERIFIED** (2 fresh scratch runs PASS); SQL-03A **IN_REVIEW / CI_PENDING** (PR #4); SQL-03B/C và SQL-04 TODO. [Evidence SQL-02](../evidence/2026-11-15-sql02-ac03-ci.md).
+- **Trạng thái:** ACTIVE — SQL-01 đã merge (MODEL_ONLY); SQL-02 **MERGED / CI_SQL_VERIFIED** (2 fresh scratch runs PASS); SQL-03A **CI_SQL_VERIFIED / PR_IN_REVIEW** (PR #4; two independent CI scratch runs PASS); SQL-03B/C và SQL-04 TODO. [Evidence SQL-02](../evidence/2026-11-15-sql02-ac03-ci.md).
 - **Repository thực hiện:** `chung6a8m/fmcg-distribution-sql`.
 - **Nguồn contract:** `business-v1.0.0` tại `business.lock.json` (source commit `88d70b3be72f34011b49b0de265ad2c43202492f`; tree `business/` = `c9a4164a99ea57e1d5f9bc8711285c6d3705f8e3`).
 - **Mục tiêu:** Có ERD đủ dùng, một mô phỏng SQL chạy được, và kiểm chứng một số bất biến khó nhất trước khi chọn backend/UI/ORM.
