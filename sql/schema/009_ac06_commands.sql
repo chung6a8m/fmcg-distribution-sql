@@ -38,12 +38,12 @@ BEGIN
          JOIN ac06.IssueSource s ON s.TenantId=p.TenantId
            AND s.SourceId=p.CommandId
          WHERE s.TenantId=@TenantId AND s.SourceId=@SourceId
-           AND p.Kind='ISSUE' AND p.LineNo=1 AND p.SkuId=s.SkuId
+           AND p.Kind='ISSUE' AND p.EntryNo=1 AND p.SkuId=s.SkuId
            AND p.LocationId=s.FromLocationId AND p.QtyDelta=-s.IssueQty
            AND p.ValueDelta=-s.OriginalCost)
        OR NOT EXISTS(SELECT 1 FROM ac06.CostEffect e
          WHERE e.TenantId=@TenantId AND e.CommandId=@SourceId
-           AND e.SourceId=@SourceId AND e.LineNo=1 AND e.Kind='ISSUE'
+           AND e.SourceId=@SourceId AND e.EntryNo=1 AND e.Kind='ISSUE'
            AND e.DeltaCogs=@Original)
         THROW 53905,'ISSUE_SOURCE_OR_COST_EFFECT_MISMATCH',1;
     -- No return can alter quantities or the value of the original issue.
@@ -79,12 +79,12 @@ BEGIN
        WHERE r.TenantId=@TenantId AND r.SourceId=@SourceId AND
          (NOT EXISTS(SELECT 1 FROM ac06.StockPosting p
            WHERE p.TenantId=r.TenantId AND p.CommandId=r.ReturnId
-             AND p.LineNo=1 AND p.Kind='RETURN'
+             AND p.EntryNo=1 AND p.Kind='RETURN'
              AND p.SkuId=r.SkuId AND p.LocationId=r.ToLocationId
              AND p.QtyDelta=r.ReceivedQty AND p.ValueDelta=r.RefundBase)
           OR NOT EXISTS(SELECT 1 FROM ac06.CostEffect e
            WHERE e.TenantId=r.TenantId AND e.CommandId=r.ReturnId
-             AND e.SourceId=r.SourceId AND e.LineNo=1 AND e.Kind='REFUND'
+             AND e.SourceId=r.SourceId AND e.EntryNo=1 AND e.Kind='REFUND'
              AND e.DeltaCogs=-r.RefundBase)))
         THROW 53908,'RETURN_STOCK_OR_COGS_EFFECT_MISMATCH',1;
     IF EXISTS(SELECT 1 FROM ac06.ReturnCostAdjustment a
@@ -92,12 +92,12 @@ BEGIN
        WHERE a.TenantId=@TenantId AND a.SourceId=@SourceId AND
          (NOT EXISTS(SELECT 1 FROM ac06.StockPosting p
            WHERE p.TenantId=a.TenantId AND p.CommandId=a.AdjustmentId
-             AND p.LineNo=r.ReturnOrdinal+1 AND p.Kind='RETURN_REVAL'
+             AND p.EntryNo=r.ReturnOrdinal+1 AND p.Kind='RETURN_REVAL'
              AND p.SkuId=r.SkuId AND p.LocationId=r.ToLocationId
              AND p.QtyDelta=0 AND p.ValueDelta=a.DeltaRefund)
           OR NOT EXISTS(SELECT 1 FROM ac06.CostEffect e
            WHERE e.TenantId=a.TenantId AND e.CommandId=a.AdjustmentId
-             AND e.SourceId=a.SourceId AND e.LineNo=r.ReturnOrdinal+1
+             AND e.SourceId=a.SourceId AND e.EntryNo=r.ReturnOrdinal+1
              AND e.Kind='REFUND_REVAL' AND e.DeltaCogs=-a.DeltaRefund)))
         THROW 53909,'FORWARD_REFUND_ADJUSTMENT_MISMATCH',1;
     IF EXISTS(SELECT 1 FROM ac06.SourceCostVersion v
@@ -105,7 +105,7 @@ BEGIN
          AND v.VersionNo>1 AND
          NOT EXISTS(SELECT 1 FROM ac06.CostEffect e
            WHERE e.TenantId=v.TenantId AND e.CommandId=v.ChangeCommandId
-             AND e.SourceId=v.SourceId AND e.LineNo=1
+             AND e.SourceId=v.SourceId AND e.EntryNo=1
              AND e.Kind='ISSUE_REVAL' AND e.DeltaCogs=v.DeltaCost))
         THROW 53910,'FORWARD_ISSUE_ADJUSTMENT_MISSING',1;
     SELECT @Refunded=
@@ -170,7 +170,7 @@ BEGIN
             @ReturnId varchar(40),@ReturnQty int,@ReturnLocation varchar(32),
             @ReturnBase decimal(28,0),@AlreadyBooked decimal(28,0),
             @Desired decimal(28,0),@Correction decimal(28,0),
-            @BeforeQty int,@LineNo int;
+            @BeforeQty int,@EntryNo int;
     SET @Hash=CONVERT(char(64),HASHBYTES('SHA2_256',CONCAT(
        'AC06:v1|',LEN(@Kind),':',@Kind,
        '|',LEN(@PeriodId),':',@PeriodId,
@@ -260,7 +260,7 @@ BEGIN
         IF @Kind='RECEIVE'
         BEGIN
             INSERT ac06.StockPosting
-              (TenantId,CommandId,LineNo,SkuId,LocationId,Kind,QtyDelta,ValueDelta)
+              (TenantId,CommandId,EntryNo,SkuId,LocationId,Kind,QtyDelta,ValueDelta)
             VALUES(@TenantId,@CommandId,1,@SkuId,@LocationId,'RECEIVE',@Qty,@CostAmount);
         END
         ELSE IF @Kind='ISSUE'
@@ -276,10 +276,10 @@ BEGIN
             VALUES(@TenantId,@CommandId,1,@IssueCost,0,@PeriodId,@CommandId);
             IF @InjectFault=1 THROW 53890,'INJECTED_ISSUE_SOURCE_FAULT',1;
             INSERT ac06.StockPosting
-              (TenantId,CommandId,LineNo,SkuId,LocationId,Kind,QtyDelta,ValueDelta)
+              (TenantId,CommandId,EntryNo,SkuId,LocationId,Kind,QtyDelta,ValueDelta)
             VALUES(@TenantId,@CommandId,1,@SkuId,@LocationId,'ISSUE',-@Qty,-@IssueCost);
             IF @InjectFault=2 THROW 53890,'INJECTED_ISSUE_POSTING_FAULT',1;
-            INSERT ac06.CostEffect(TenantId,CommandId,LineNo,SourceId,Kind,DeltaCogs)
+            INSERT ac06.CostEffect(TenantId,CommandId,EntryNo,SourceId,Kind,DeltaCogs)
             VALUES(@TenantId,@CommandId,1,@CommandId,'ISSUE',@IssueCost);
         END
         ELSE IF @Kind='RETURN'
@@ -291,10 +291,10 @@ BEGIN
                    @Qty,@Refund,@CostVersion,@PeriodId);
             IF @InjectFault=1 THROW 53890,'INJECTED_RETURN_SOURCE_FAULT',1;
             INSERT ac06.StockPosting
-              (TenantId,CommandId,LineNo,SkuId,LocationId,Kind,QtyDelta,ValueDelta)
+              (TenantId,CommandId,EntryNo,SkuId,LocationId,Kind,QtyDelta,ValueDelta)
             VALUES(@TenantId,@CommandId,1,@SkuId,@LocationId,'RETURN',@Qty,@Refund);
             IF @InjectFault=2 THROW 53890,'INJECTED_RETURN_POSTING_FAULT',1;
-            INSERT ac06.CostEffect(TenantId,CommandId,LineNo,SourceId,Kind,DeltaCogs)
+            INSERT ac06.CostEffect(TenantId,CommandId,EntryNo,SourceId,Kind,DeltaCogs)
             VALUES(@TenantId,@CommandId,1,@SourceId,'REFUND',-@Refund);
         END
         ELSE
@@ -309,7 +309,7 @@ BEGIN
             VALUES(@TenantId,@SourceId,@CostVersion+1,@CostAmount,@CostDelta,
                    @PeriodId,@CommandId);
             IF @InjectFault=1 THROW 53890,'INJECTED_REVALUE_VERSION_FAULT',1;
-            INSERT ac06.CostEffect(TenantId,CommandId,LineNo,SourceId,Kind,DeltaCogs)
+            INSERT ac06.CostEffect(TenantId,CommandId,EntryNo,SourceId,Kind,DeltaCogs)
             VALUES(@TenantId,@CommandId,1,@SourceId,'ISSUE_REVAL',@CostDelta);
             -- Recalculate already returned lines with the revised source cost;
             -- post only the difference for each line in the open period.
@@ -319,7 +319,7 @@ BEGIN
               WHERE TenantId=@TenantId AND SourceId=@SourceId
               ORDER BY ReturnOrdinal;
             SET @BeforeQty=0;
-            SET @LineNo=1;
+            SET @EntryNo=1;
             OPEN cur_returns;
             FETCH NEXT FROM cur_returns
               INTO @ReturnId,@ReturnQty,@ReturnBase,@ReturnLocation;
@@ -335,7 +335,7 @@ BEGIN
                  FROM ac06.ReturnCostAdjustment
                  WHERE TenantId=@TenantId AND ReturnId=@ReturnId;
                 SET @Correction=@Desired-@AlreadyBooked;
-                SET @LineNo=@LineNo+1;
+                SET @EntryNo=@EntryNo+1;
                 IF @Correction<>0
                 BEGIN
                     INSERT ac06.ReturnCostAdjustment
@@ -343,13 +343,13 @@ BEGIN
                     VALUES(@TenantId,@CommandId,@ReturnId,@SourceId,
                            @CostVersion+1,@Correction,@PeriodId);
                     INSERT ac06.StockPosting
-                      (TenantId,CommandId,LineNo,SkuId,LocationId,Kind,QtyDelta,ValueDelta)
-                    VALUES(@TenantId,@CommandId,@LineNo,@SrcSku,@ReturnLocation,
+                      (TenantId,CommandId,EntryNo,SkuId,LocationId,Kind,QtyDelta,ValueDelta)
+                    VALUES(@TenantId,@CommandId,@EntryNo,@SrcSku,@ReturnLocation,
                            'RETURN_REVAL',0,@Correction);
                     IF @InjectFault=2 THROW 53890,'INJECTED_REVALUE_POSTING_FAULT',1;
                     INSERT ac06.CostEffect
-                      (TenantId,CommandId,LineNo,SourceId,Kind,DeltaCogs)
-                    VALUES(@TenantId,@CommandId,@LineNo,@SourceId,
+                      (TenantId,CommandId,EntryNo,SourceId,Kind,DeltaCogs)
+                    VALUES(@TenantId,@CommandId,@EntryNo,@SourceId,
                            'REFUND_REVAL',-@Correction);
                 END;
                 SET @BeforeQty=@BeforeQty+@ReturnQty;
@@ -415,7 +415,7 @@ BEGIN
      WHERE TenantId=@TenantId AND SkuId=@SkuId AND LocationId=@QuarantineLocation;
     IF @MainQty IS NULL OR @QuarantineQty IS NULL
         THROW 53913,'CHECKPOINT_STOCK_LOCATION_MISSING',1;
-    INSERT ac06.Checkpoint VALUES(@Ordinal,@Name,@Version,@Cost,@Q,@Refund,@Cogs,
+    INSERT ac06.CostCheckpoint VALUES(@Ordinal,@Name,@Version,@Cost,@Q,@Refund,@Cogs,
                     @MainQty,@MainValue,@QuarantineQty,@QuarantineValue);
 END;
 GO
