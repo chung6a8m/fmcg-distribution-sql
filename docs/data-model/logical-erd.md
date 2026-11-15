@@ -9,7 +9,7 @@
 
 - **Master:** Tenant/Seller, Customer, SKU/UoM, StockLocation. Outlet tùy chọn, không phải Customer chịu nợ.
 - **Snapshot chứng từ:** CustomerId chịu nợ, ShipTo (tên/địa chỉ/nguồn), UoM và hệ số quy đổi, giá/discount/tax profile, terms/policy version, businessDate. Snapshot bất biến sau mốc chốt; không join master hiện tại để tính lại.
-- **Source/event:** AOrder Confirm, grant/hold, manifest load, B SaleDeliveryReceipt, A Delivery, receipt, handover accept, trip unload và opening. Mỗi sự kiện/dòng có identity, actor, nguồn, mốc thực tế và thời điểm ghi nhận.
+- **Source/event:** AOrder Confirm, grant/hold, manifest load, B SaleDeliveryReceipt, A Delivery, receipt, handover accept, trip unload và opening. Mỗi sự kiện/dòng có identity, actor, nguồn, mốc thực tế và thời điểm ghi nhận. `SOURCE_LINE.sourceLineId` là ID bền **duy nhất trong tenant** (không phải ordinal lặp lại theo event); `eventId` là parent, `lineOrdinal` chỉ đánh số trong event. Mọi FK/unique của effect dùng cùng `(tenantId, sourceLineId)`.
 - **Ledger effect:** stock quantity/value postings, quyền lượng A/B, COGS, khoản phải thu, phân bổ thu, grant tín dụng B, custody, quỹ. Mỗi effect định danh được source line; retry không sinh bản sao.
 - **Derived balance:** tồn/vốn theo SKU × StockLocation, quyền lượng còn lại và vị trí đang được giữ, AR còn mở, grant còn lại, custody và quỹ. Projection có thể lưu cache nhưng **nguồn chân lý phải truy lại được từ event/effect**.
 
@@ -38,6 +38,7 @@ erDiagram
     TRIP ||--o{ MANIFEST_LINE : "cap hang"
     A_RESERVATION o|--o{ MANIFEST_LINE : "nguon A"
     B_QUOTA o|--o{ MANIFEST_LINE : "nguon B"
+    MANIFEST_LINE ||--o{ TRIP_UNLOAD_LINE : "doi soat hang tra"
     TRIP ||--o{ B_CREDIT_GRANT : "grant co nguon"
     CUSTOMER ||--o{ B_SALE : "ben chiu no"
     TRIP ||--o{ B_SALE : "ban theo xe"
@@ -48,7 +49,7 @@ erDiagram
     B_SALE_LINE o|--o{ DELIVERY_LINE : "B source"
 ~~~
 
-**Ràng buộc XOR:** mỗi MANIFEST_LINE thuộc **đúng một** A_RESERVATION hoặc B_QUOTA; mỗi DELIVERY_LINE thuộc **đúng một** A_ORDER_LINE hoặc B_SALE_LINE. Hai FK tùy chọn ở bản vẽ chỉ diễn đạt quan hệ, không có nghĩa được bỏ kiểm XOR. Một StockLocation loại TRIP_CUSTODY thuộc tối đa một Trip trong slice; kho MAIN không thuộc Trip.
+**Ràng buộc XOR:** mỗi MANIFEST_LINE thuộc **đúng một** A_RESERVATION hoặc B_QUOTA; mỗi DELIVERY_LINE thuộc **đúng một** A_ORDER_LINE hoặc B_SALE_LINE. Hai FK tùy chọn ở bản vẽ chỉ diễn đạt quan hệ, không có nghĩa được bỏ kiểm XOR. TRIP_UNLOAD_LINE tham chiếu đúng MANIFEST_LINE gốc để kế thừa pool A/B, rightId, tripId và SKU; không đổi pool khi trả xe. DELIVERY và DELIVERY_LINE phải mang đúng Customer chịu nợ của A_ORDER/B_SALE nguồn. Một StockLocation loại TRIP_CUSTODY thuộc tối đa một Trip trong slice; kho MAIN không thuộc Trip.
 
 ### Danh mục logic tối thiểu
 
@@ -62,7 +63,8 @@ erDiagram
 | A | A_ORDER, A_ORDER_LINE | CustomerId + ShipToSnapshot; CONFIRMED, confirmedBaseQty, unitPrice/terms/policy snapshot; Confirm không phát sinh AR/COGS |
 | Quyền A | A_RESERVATION | ReservationId, orderLineId, tripId, SKU, grantedQty; lượng đã giao / release phải có source; heldQty còn lại có thể chuyển vị trí |
 | Quyền B | B_QUOTA | QuotaId, tripId, SKU, grantedQty; consumedQty/releasedQty theo source; không dùng lượng đã giữ cho A |
-| Cấp xe | MANIFEST_LINE | ManifestLineId, tripId, SKU, poolType A/B, quyền nguồn (XOR), baseQty, cost transfer snapshot; load/unload không phải sale |
+| Cấp xe | MANIFEST_LINE | ManifestLineId, tripId, SKU, poolType A/B, quyền nguồn (XOR), baseQty, cost transfer snapshot; **mỗi line load có một StockMovement riêng** (hai legs), không gộp hai pool thành một movement |
+| Trả xe | TRIP_UNLOAD_LINE | UnloadLineId, sourceLineId, originalManifestLineId, tripId/SKU/pool và baseQty/cost snapshot; mỗi line unload một StockMovement hai legs, kiểm qty còn theo manifest nguồn |
 | B | B_CREDIT_GRANT, B_SALE, B_SALE_LINE | GrantId, phạm vi quyền/nguồn; SaleId, CustomerId + ShipToSnapshot, payable snapshot; B line gắn quota và giá |
 | Giao thực | DELIVERY, DELIVERY_LINE | DeliveryId, CustomerId, businessDate, module A/B; source order/sale line XOR, baseQty, cost snapshot; có thể giao A nhiều đợt |
 
@@ -75,6 +77,8 @@ erDiagram
     TENANT ||--o{ BUSINESS_EVENT : "nhat ky nguon"
     BUSINESS_EVENT ||--|{ SOURCE_LINE : "chi tiet nguon"
     SOURCE_LINE ||--o{ STOCK_MOVEMENT : "bien dong hang"
+    MANIFEST_LINE ||--o{ STOCK_MOVEMENT : "load tung nguon"
+    TRIP_UNLOAD_LINE ||--o{ STOCK_MOVEMENT : "unload tung nguon"
     STOCK_MOVEMENT ||--|{ STOCK_POSTING : "cac leg so kho"
     DELIVERY_LINE ||--o{ STOCK_MOVEMENT : "xuat giao"
     SOURCE_LINE ||--o{ RIGHT_POSTING : "di chuyen quyen"
@@ -104,19 +108,19 @@ erDiagram
 
 | Entity/effect | Ý nghĩa và cách diễn giải AC-03 |
 |---|---|
-| BUSINESS_EVENT + SOURCE_LINE | Định danh command + canonical payload hash, source document/line, xảy ra lúc nào/ghi nhận lúc nào, actor/tenant/trip, event kind; kết quả ACCEPTED/REJECTED được tách khỏi posted ledger |
-| STOCK_MOVEMENT | Một biến động hàng **có nguồn** (movementId, sourceLineId, kind=OPENING/INTERNAL_TRANSFER/DELIVERY_ISSUE/TRIP_UNLOAD, SKU, qty/value và from/to location hoặc ranh giới ngoài hệ thống); MANIFEST_LINE/DELIVERY_LINE liên quan khi thích hợp. Một movement có các stock postings legs cùng transaction, không phải sale mặc định |
-| STOCK_POSTING | **Leg có dấu** (location, SKU, deltaQty, deltaStockValue, sourceLine, ordinal). Transfer có hai leg bù nhau; giao/bán có leg âm. Opening là leg dương có nguồn. Không trừ A/B hai lần từ tồn |
+| BUSINESS_EVENT + SOURCE_LINE | BUSINESS_EVENT unique `(tenantId, producerId, commandId)` + payload hash. SOURCE_LINE unique **`(tenantId, sourceLineId)` trên toàn tenant**, FK `(tenantId, eventId)` đến BUSINESS_EVENT, unique `(tenantId, eventId, lineOrdinal)` cho thứ tự dòng; source document/line, actor/trip, occurredAt/recordedAt; ACCEPTED/REJECTED tách khỏi posted ledger |
+| STOCK_MOVEMENT | Một biến động hàng **có nguồn** (movementId, sourceLineId, kind=OPENING/INTERNAL_TRANSFER/DELIVERY_ISSUE/TRIP_UNLOAD, SKU, qty/value, from/to). Với load/unload, **một movement cho đúng một MANIFEST_LINE/TRIP_UNLOAD_LINE** và tham chiếu sourceLineId của line đó; mỗi movement transfer có hai legs lượng/giá trị đối nhau. Cùng manifest/unload command phải commit nguyên tử mọi line và right effects; không phải sale |
+| STOCK_POSTING | **Leg có dấu** (movementId, location, SKU, deltaQty, deltaStockValue, sourceLineId, legOrdinal). Từng movement transfer có hai legs đối nhau; tổng movement theo manifest bằng sum từng line A/B; giao/bán có leg âm. Opening là leg dương có nguồn. Không trừ A/B hai lần từ tồn |
 | RIGHT_POSTING | (rightKind=A/B, rightId, location, deltaQty, reason, sourceLine). Tổng tất cả location là A held/B quota remaining; mỗi location tạo RIGHT_POSITION **derived**. RELEASE B ở T6 không chuyển entitlement thành A |
 | COGS_EFFECT | Giá vốn xuất giao theo **CostBasisSnapshot** của DELIVERY_LINE; chuyển kho/xe không ghi COGS |
 | AR_OPEN_ITEM | Nghĩa vụ gốc từ DELIVERY_LINE (A hoặc B), CustomerId, grossDue, dueDate theo terms snapshot; **không** sinh từ A Confirm/load |
-| RECEIPT, RECEIPT_ALLOCATION | Receipt cash phải CONFIRMED bằng tiền thật; allocation tới open item có nguồn riêng. B sale tạo item gốc 300 và áp receipt 200 → AR B còn 100 |
+| RECEIPT, RECEIPT_ALLOCATION | Receipt cash phải CONFIRMED bằng tiền thật; allocation tới open item có nguồn riêng. Cùng `(tenantId, customerId)` giữa RECEIPT và AR_OPEN_ITEM bắt buộc tại allocation, kể cả khi cả hai cùng tenant; không tự áp receipt của Customer X cho Customer Y. B sale tạo item gốc 300 và áp receipt 200 → AR B còn 100 |
 | CUSTOMER_CREDIT_EFFECT | Chỉ phần receipt đã confirmed nhưng chưa áp thành credit có nguồn; AC-03 cash 200 áp đủ nên không tăng credit. Không trộn với B_CREDIT_GRANT |
 | B_CREDIT_GRANT, GRANT_EFFECT | Grant ban đầu 100, B exposure 100 tiêu dùng; remaining=0; cash thu nợ hoặc nộp quỹ không tự nạp lại grant |
 | CUSTODY_EFFECT | Ledger tiền mặt nhân viên giữ: +200 khi cash CONFIRMED, −200 khi cashier thực nhận handover |
 | HANDOVER, CASHIER_ACCEPTANCE, FUND_EFFECT | OFFERED không tạo effect; CASHIER_ACCEPTED 200 tạo custody−200 và fund+200 **cùng một transaction**, không động AR |
 
-**Một StockMovement có sourceLineId ổn định** và tối thiểu một StockPosting leg, transfer nội bộ có đúng hai leg cân lượng/giá trị. StockPosting là ledger; StockMovement là nhóm chứng cứ nghiệp vụ để phân biệt opening/transfer/delivery/unload. Các khóa sourceLine + movementKind/legOrdinal và việc không post trùng được nêu tại [invariants.md](invariants.md).
+**Một StockMovement có sourceLineId ổn định** và tối thiểu một StockPosting leg; **mỗi MANIFEST_LINE hoặc TRIP_UNLOAD_LINE tạo một movement transfer riêng** với đúng hai legs cân lượng/giá trị. T1: A40/value400 và B30/value300 → hai movements, bốn legs; T6: A15/value150 và B10/value100 → hai movements, bốn legs. Các movements của cùng command commit trong **một transaction**, cùng right postings tương ứng. Không chỉ kiểm net 70/25: từng line phải đối chiếu được stock qty/value và right ownership. Source keys và chống post trùng xem [invariants.md](invariants.md).
 
 **Balances không phải nghiệp vụ nguồn mới:** STOCK_COST_BALANCE = SUM STOCK_POSTING theo (tenant, SKU, StockLocation); RIGHT_POSITION = SUM RIGHT_POSTING theo (tenant, kind, rightId, StockLocation); COGS = SUM COGS_EFFECT; AR = SUM openItem.grossDue − SUM allocations hợp lệ; custody/fund/grant = tổng các effect tương ứng. Nếu SQL-02 materialize các balances để khóa nhanh, phải chứng minh reconcile về nguồn.
 
@@ -138,12 +142,12 @@ Quyền lượng và hàng nằm ở đâu là **hai trục khác nhau**. Với 
 
 ## 5. Khóa logic, cardinality và tính bất biến
 
-- Mọi entity nghiệp vụ mang tenantId; ID tuyệt đối chỉ có nghĩa cùng tenant. Mọi quan hệ giữa chứng từ, customer, SKU, trip, right, ledger/source phải **cùng tenant**. Không lấy database topology làm bằng chứng kiểm tra boundary ở mức logic.
+- Mọi entity nghiệp vụ mang tenantId; ID tuyệt đối chỉ có nghĩa cùng tenant. Mọi quan hệ giữa chứng từ, customer, SKU, trip, right, ledger/source phải **cùng tenant**. `sourceLineId` duy nhất toàn tenant, `lineOrdinal` duy nhất trong event; FK từ effect dùng `(tenantId,sourceLineId)` nhất quán. Không lấy database topology làm bằng chứng kiểm tra boundary ở mức logic.
 - A_ORDER (1) → A_ORDER_LINE (1..n) → A_RESERVATION (0..n); DELIVERY_LINE A có đúng một A_ORDER_LINE, nhưng một order line có nhiều delivery lines/lần giao.
 - TRIP (1) → B_QUOTA (0..n)/MANIFEST_LINE (0..n)/DELIVERY (0..n); quota có thể nhiều grant sources, **không giả định khóa duy nhất chỉ theo trip+SKU** khi chưa phê duyệt.
-- DELIVERY_LINE B có đúng một B_SALE_LINE; command B gồm sale/delivery/receipt (nếu có)/AR/stock/cost/right/grant trong một boundary, không có nửa giao dịch.
+- DELIVERY_LINE B có đúng một B_SALE_LINE; Customer trên Delivery/Line/AR phải khớp Customer của B_SALE (A phải khớp A_ORDER). Receipt áp vào AR phải cùng Customer, kể cả trường hợp hai Customer cùng tenant; chuyển nợ/trả hộ ngoài scope cần source/approval riêng. Command B gồm sale/delivery/receipt (nếu có)/AR/stock/cost/right/grant trong một boundary, không có nửa giao dịch.
 - RECEIPT (1) → RECEIPT_ALLOCATION (0..n), AR_OPEN_ITEM (1) ← allocations (0..n); một Receipt có thể trả nhiều AR item, một AR item có thể nhận nhiều allocation sources.
-- Stock transfer MAIN↔TRIP là một STOCK_MOVEMENT có hai STOCK_POSTING legs giá trị/lượng bù nhau; một transaction nguồn, không hai sale. Một lot có thể phải được quản lý sau, nhưng **AC-03 chưa cung cấp lot source** nên không bịa lot/FEFO vào fixture.
+- Stock transfer MAIN↔TRIP dùng **một STOCK_MOVEMENT/hai STOCK_POSTING legs cho mỗi manifest/unload source line**, không phải một movement gộp toàn bộ A+B. Tất cả line của cùng command transfer commit trong một transaction nguồn, không hai sale. Một lot có thể phải được quản lý sau, nhưng **AC-03 chưa cung cấp lot source** nên không bịa lot/FEFO vào fixture.
 - Định danh duy nhất và scale đề xuất xem [invariants.md](invariants.md), transaction và lock xem [transaction-boundaries.md](transaction-boundaries.md), đối chiếu từng checkpoint xem [ac03-mapping.md](ac03-mapping.md).
 
 ## 6. Chủ động hoãn (không suy là đã hoàn tất)
