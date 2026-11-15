@@ -1,6 +1,6 @@
 # SQL-02 — AC-03 executable SQL (SQL Server 2017+)
 
-**Trạng thái:** IMPLEMENTED / **SQL_ENGINE_NOT_RUN** tại thời điểm tạo PR. Đây là executable specification cho slice AC-03, chưa phải chứng cứ SQL PASS, app E2E hoặc Go-Live. Không dùng để bật B_ONLINE production.
+**Trạng thái:** **CI_SQL_VERIFIED** trên Windows / SQL Server 2019 LocalDB (compat 150), **2 lần fresh-scratch PASS**; PR #3 vẫn pending review/merge. [Evidence/actual và TestRunIds](../docs/evidence/2026-11-15-sql02-ac03-ci.md), [CI PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43702421402). Đây là SQL executable specification, **không** phải app E2E hoặc Go-Live, không dùng để bật B_ONLINE production.
 
 ## Phạm vi và nguồn
 
@@ -67,4 +67,6 @@ Bộ negative cases có lỗi mong đợi/rollback và kiểm không còn side e
 - `tests/negative.sql`: wrong-customer/tenant/source, per-source corruption và retry.
 - `run-tests.ps1`: entrypoint + DB guard + compare oracle gốc + evidence.
 
-**Chưa kiểm chứng:** SQL engine actual/compatibility/build/log, two-session concurrency, VAT/rounding ngoài AC-03, tài khoản/authorization ở app, provider invoice/accounting, offline recovery, cutover, production tenancy, Go-Live. Bất kỳ thay đổi semantic nào phải thông qua Business Baseline canonical; `business/` và `business.lock.json` không bị sửa.
+**Đã xác minh thực tế:** `sqlcmd` chạy SQL Server **2019 LocalDB v15.0.4382.1 / compatibility 150**, 2 lần trên 2 scratch DB khác nhau, mỗi lần 7/7 checkpoints và 91/91 field comparisons PASS (tổng 182 phép so), negative/fault tests PASS, cleanup guard PASS. CI cũng thực thi lệnh chống target `master`, nhận **exit 1/UNSAFE_TARGET/NO_DATABASE_CREATED**. Artifact chứa JSON expected/actual/diff và môi trường từng run, kể cả negative guard có status FAIL **được mong đợi**. [Xem evidence](../docs/evidence/2026-11-15-sql02-ac03-ci.md).
+
+**Chưa kiểm chứng:** máy Windows của người dùng, SQL Server 2017 compatibility 140, two-session concurrency (SQL-03A), VAT/rounding ngoài AC-03, tài khoản/authorization ở app, provider invoice/accounting, offline recovery, cutover, production tenancy, Go-Live. Bất kỳ thay đổi semantic nào phải thông qua Business Baseline canonical; `business/` và `business.lock.json` không bị sửa.
