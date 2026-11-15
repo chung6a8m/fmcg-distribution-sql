@@ -139,7 +139,7 @@ Runner bắt buộc chạy AC-03 7×13 regression trước khi chạy SQL-03B; d
 
 ## SQL-03C — AC-06 source-cost refund, cost snapshot và locked-period correction
 
-**Trạng thái triển khai:** IMPLEMENTED / SQL_CI_NOT_YET_VERIFIED tại thời điểm tạo PR SQL-03C. [Mô hình/evidence, gates](../docs/evidence/2026-11-15-sql03c-ac06.md). AC-06 là SQL executable specification, không đồng nghĩa EV-07, app E2E hoặc Go-Live.
+**Trạng thái triển khai:** **CI_SQL_VERIFIED** trên executable/test SHA `1db0f2fd17e615004307152899f68122c7f4cd3d` — [SQL-03C run 43724179219 PASS](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43724179219), **2 fresh-scratch PASS**, 10/10 oracle fields và AC-03 7×13 mỗi run, negative/fault/guarded DROP. [JSON artifact](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43724179219/artifacts/14165417219). [Mô hình/evidence, gates](../docs/evidence/2026-11-15-sql03c-ac06.md). AC-06 là SQL executable specification, không đồng nghĩa EV-07, app E2E hoặc Go-Live.
 
 **Nguồn read-only:** `business/reference-data/scenarios/business-cases.json#AC-06`, `business/reference-data/expected-results/additional-oracles.json#AC-06` (BR-07/20). Runner nạp oracle gốc ở runtime, so **10 trường** gồm boolean khóa kỳ; không có expected copy trong T-SQL.
 
