@@ -22,7 +22,7 @@
 | **SQL-01 — Logical ERD** | MERGED / MODEL_ONLY | Domain → quan hệ, source, snapshot, bất biến, transaction boundaries cho **AC-03** (BR-03/04/07/11/12/13) | ERD slice + mapping từng bước AC-03 + quy tắc khóa/unique/decimal; không còn dữ liệu chủ chốt chưa có chỗ lưu |
 | **SQL-02 — AC-03 SQL executable** | MERGED / CI_SQL_VERIFIED | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
 | **SQL-03A — B credit, atomicity** | CI_SQL_VERIFIED / PR_IN_REVIEW | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
-| **SQL-03B — Thu, phân bổ, nộp quỹ** | TODO | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
+| **SQL-03B — Thu, phân bổ, nộp quỹ** | IMPLEMENTED / CI_PENDING / PR_IN_REVIEW | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
 | **SQL-03C — Giá vốn và hoàn** | TODO | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
 | **SQL-04 — Review và handoff cho app** | TODO | Đánh giá mô hình sau các SQL scenarios | Review constraints/concurrency, ghi gap và quyết định còn mở; xác định vertical slice app đầu tiên và tiêu chí kiểm thử; **sau đó mới chốt app stack** |
 
@@ -78,6 +78,8 @@
 - OFFER không tác động custody/fund; handover không trừ AR lần hai; receipt chưa verified không được coi confirmed; số âm và over-allocation bị chặn.
 - Nếu phạm vi không phình: AC-20 advance500.000/expense300.000/offer200.000/cashier accept100.000×2; AdvanceLedger **không** trộn AR/cash custody.
 - Gate: đối chiếu từng bước với golden AC-21 (và AC-20 nếu đưa vào), đủ thử reject/rollback, trace từng source.
+
+**SQL-03B đã code trên nhánh PR:** `sql/schema/006_ac21.sql`, `007_ac21_commands.sql`, `sql/scenarios/ac21.sql`, `sql/tests/ac21-negative.sql`, `sql/include-ac21.ps1`, workflow `sql-ac21.yml`. Chạy `sql/run-tests.ps1 -IncludeSql03B`: AC-21 (5×6) **và AC-20 (5×5)** đọc golden gốc, negative/fault/replay, không sửa `business/`. [Runbook](../../sql/README.md), [evidence trạng thái ban đầu](../evidence/2026-11-15-sql03b-ac21-ac20.md). **CI_PENDING** không đồng nghĩa SQL VERIFIED / AC E2E / Owner acceptance.
 
 ### SQL-03C — AC-06
 
