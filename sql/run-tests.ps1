@@ -9,6 +9,7 @@ param(
     [switch]$KeepDatabase,
     [switch]$IncludeSql03A,
     [switch]$IncludeSql03B,
+    [switch]$IncludeSql03C,
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'test-results')
 )
 Set-StrictMode -Version Latest
@@ -261,6 +262,10 @@ SELECT CONVERT(varchar(10),compatibility_level) FROM sys.databases WHERE name=DB
     if ($IncludeSql03B) {
         Assert-OwnedMarker $script:DbName $script:TestRunId
         . (Join-Path $PSScriptRoot 'include-ac21.ps1')
+    }
+    if ($IncludeSql03C) {
+        Assert-OwnedMarker $script:DbName $script:TestRunId
+        . (Join-Path $PSScriptRoot 'include-ac06.ps1')
     }
     $report.Status = 'PASS'
     $script:ExitStatus = 0
