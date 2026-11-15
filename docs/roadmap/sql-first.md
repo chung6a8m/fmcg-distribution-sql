@@ -21,8 +21,8 @@
 |---|---|---|---|
 | **SQL-01 — Logical ERD** | MERGED / MODEL_ONLY | Domain → quan hệ, source, snapshot, bất biến, transaction boundaries cho **AC-03** (BR-03/04/07/11/12/13) | ERD slice + mapping từng bước AC-03 + quy tắc khóa/unique/decimal; không còn dữ liệu chủ chốt chưa có chỗ lưu |
 | **SQL-02 — AC-03 SQL executable** | MERGED / CI_SQL_VERIFIED | SQL DDL tối thiểu, opening và 7 checkpoints `T0..T6`; test cả B31 bị reject | Một lệnh local chạy lại từ **scratch database được xác thực**; mọi cột ở oracle AC-03 khớp từng checkpoint; reject không tạo side effect |
-| **SQL-03A — B credit, atomicity** | CI_SQL_VERIFIED / PR_IN_REVIEW | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
-| **SQL-03B — Thu, phân bổ, nộp quỹ** | TODO | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
+| **SQL-03A — B credit, atomicity** | MERGED / CI_SQL_VERIFIED | **AC-09** và fault liên quan **AC-11** (BR-04/11/12/14/16) | Cash, reserved credit, bank pending, overpay; retry cùng ID/cùng payload một effect, khác payload conflict; **hai ca độc lập trên 2 kết nối thật** tranh credit grant và BQuota đều không cùng commit |
+| **SQL-03B — Thu, phân bổ, nộp quỹ** | CI_SQL_VERIFIED / PR_IN_REVIEW | **AC-21** (BR-13/14), có thể bổ sung **AC-20** nếu nhỏ | AR/CustomerCredit/custody/fund độc lập; OFFER chưa chuyển sổ; cashier ACCEPT mới chuyển; số dư từng bước trùng oracle |
 | **SQL-03C — Giá vốn và hoàn** | TODO | **AC-06** (BR-07/20) | Cumulative source-cost refund, rounding residual, late adjustment sau khóa kỳ; không sửa bản ghi kỳ khóa; tất cả số khớp oracle |
 | **SQL-04 — Review và handoff cho app** | TODO | Đánh giá mô hình sau các SQL scenarios | Review constraints/concurrency, ghi gap và quyết định còn mở; xác định vertical slice app đầu tiên và tiêu chí kiểm thử; **sau đó mới chốt app stack** |
 
@@ -79,6 +79,8 @@
 - Nếu phạm vi không phình: AC-20 advance500.000/expense300.000/offer200.000/cashier accept100.000×2; AdvanceLedger **không** trộn AR/cash custody.
 - Gate: đối chiếu từng bước với golden AC-21 (và AC-20 nếu đưa vào), đủ thử reject/rollback, trace từng source.
 
+**SQL-03B đã code trên nhánh PR:** `sql/schema/006_ac21.sql`, `007_ac21_commands.sql`, `sql/scenarios/ac21.sql`, `sql/tests/ac21-negative.sql`, `sql/include-ac21.ps1`, workflow `sql-ac21.yml`. Chạy `sql/run-tests.ps1 -IncludeSql03B`: AC-21 (5×6) **và AC-20 (5×5)** đọc golden gốc, negative/fault/replay, không sửa `business/`. [Runbook](../../sql/README.md), [evidence trạng thái ban đầu](../evidence/2026-11-15-sql03b-ac21-ac20.md). **CI_SQL_VERIFIED** trên [run 43718593857](https://github.com/chung6a8m/fmcg-distribution-sql/actions/runs/43718593857), hai TestRunIds và guarded DROP trong [evidence](../evidence/2026-11-15-sql03b-ac21-ac20.md). Vẫn **không đồng nghĩa AC E2E / EV-06 / Owner acceptance**.
+
 ### SQL-03C — AC-06
 
 - Moving average theo SKU × StockLocation và **cost source snapshot**; tách rõ giá vốn xuất khỏi công thức hoàn giá trị nguồn.
@@ -113,4 +115,4 @@ Khi SQL-03A/B/C hoàn tất, review một lần:
 
 Không xây app shell/API/UI/auth hay lựa chọn ORM; không xây hạ tầng cloud/CI phức tạp, ledger kế toán hoàn chỉnh, hóa đơn provider thật, offline sync production, tenant migration, cutover Kho-01 thật, PWA, chứng cứ pháp lý, pilot NPP-01. Các mục này thuộc lộ trình ứng dụng/verification riêng; các gate G-STOCK/G-CUT/G-IDEMP/G-LEDGER/G-INV vẫn chưa được miễn hoặc hoàn tất.
 
-**Bước hiện tại:** SQL-02 đã PASS hai run độc lập trên **SQL Server 2019 LocalDB / compatibility 150**, có [guard test, logs/actual và TestRunIds](../evidence/2026-11-15-sql02-ac03-ci.md). Tiếp theo review findings PR #3 và merge khi đạt; SQL Server 2017/compat140 chưa xác nhận riêng. Sau đó mở SQL-03A/B/C; không cần chọn app stack trước.
+**Bước hiện tại (15/11/2026):** SQL-01/02 đã merge; SQL-03A [PR #4](https://github.com/chung6a8m/fmcg-distribution-sql/pull/4) đã merge; SQL-03B [PR #5](https://github.com/chung6a8m/fmcg-distribution-sql/pull/5) đang chờ review dù CI SQL đã PASS trên source commit. Tiếp theo review SQL-03B rồi triển khai SQL-03C → SQL-04. SQL Server 2017/compat140 và app E2E chưa được chứng minh; chưa chốt app stack.
